@@ -6,7 +6,7 @@ import logging
 import sys 
 
 sys.path.append('./')
-from validate import df_count, df_print_schema, df_top10_rec
+from validate import df_count, df_print_schema
 
 # create spark session state
 def spark_session():

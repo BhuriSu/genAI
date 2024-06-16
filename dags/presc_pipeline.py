@@ -1,35 +1,38 @@
 import logging
+from typing import Dict
 import pandas as pd
 from sqlalchemy import create_engine
 from azure.storage.blob import BlobServiceClient
 import io
 import glob
+import os
 
 from datetime import datetime, timedelta
 from airflow.models import DAG, Variable
 from airflow.hooks.S3_hook import S3Hook
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python_operator import PythonOperator
-from airflow.operators.postgres_operator import PostgresOperator
 from airflow.contrib.sensors.file_sensor import FileSensor
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.utils.dates import days_ago
 
 # config variables
 creds = Variable.get("my_credential_secrets", deserialize_json=True)
+CONN_STRING = Variable.get("DB_CONN")
 
 def local_filesTo_s3(filepath, key, bucket_name):
     """
     functions to load files from local to s3 bucket
+
     Args:
         filepath: source of the files to be uploaded
         key: folder to write data to s3
         bucket_name: name of the bucket
+
     """
     s3 = S3Hook(aws_conn_id="aws_default")
     ingested_date = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
     filename = []
-    for root, dirs, files in os.walk(filepath):
+    for files in os.walk(filepath):
         for file in files:
             if file.endswith(".csv"):
                 filename.append(file)
@@ -41,64 +44,84 @@ def local_filesTo_s3(filepath, key, bucket_name):
                 for file in filename:
                     file_name = os.path.join(filepath, file)
                     s3.load_file(filename=file_name, key="{}/{}".format(key, ingested_date), bucket_name=bucket_name, replace=True)
-    
     print("upload to s3 successful ...")
-    
 
 def load_files_to_DB(file_name, data_path):
     """
     Function that inserts all transformed data into a Postgres database.
+    
     Args:
-        file_name: name of the file to copy to DB
-        data_path: directory pointing to the file
+        file_name: Name of the file to copy to the DB.
+        data_path: Directory pointing to the file.
     """
     engine = create_engine(str(Variable.get("DB_CONN")))
+    
     for f in glob.glob(data_path):
         filename = f.rsplit('/')[-1]
-    
-    df = pd.read_csv(data_path)
-    # Drops old table and creates new empty table using data frame schema
-    df.head(0).to_sql('corporation_report', engine, if_exists='replace', index=False)
-    conn = engine.raw_connection()
-    cur = conn.cursor()
-    output = io.StringIO()
-    df.to_csv(output, sep='\t', header=False, index=False)
-    output.seek(0)
-    contents = output.getvalue()
-    # Skip any line which does not match the required field
-    try:
-        cur.copy_from(output, 'corporation_report', null="") # set null values to ''
-    except:
-        pass
-    
-    if conn is not None:
-        conn.commit()
-        cur.close()
-        conn.close()
-        print("Data insertion to database is completed...")
+        df = pd.read_csv(data_path)
+        
+        if filename == file_name:
+            table_name = 'corporation_report'
+        else:
+            table_name = 'corporation'
+        
+        # Drops old table and creates a new empty table using dataframe schema
+        df.head(0).to_sql(table_name, engine, if_exists='replace', index=False)
+        conn = engine.raw_connection()
+        cur = conn.cursor()
+        output = io.StringIO()
+        df.to_csv(output, sep='\t', header=False, index=False)
+        output.seek(0)
+        contents = output.getvalue()
+        
+        # Skip any line which does not match the required field
+        try:
+            cur.copy_from(output, table_name, null="") # Set null values to ''
+        except Exception as e:
+            print(f"Error copying data: {e}")
+        
+        if conn is not None:
+            conn.commit()
+            cur.close()
+            conn.close()
+            print("Data insertion to database is completed...")
 
 
 def data_quality_checks(tables):
     """
-    function that checks if data was loaded to database schema
+    Function that checks if data was loaded to the database schema.
 
     Args:
-        tables: list of tables to perform data quality checks on 
+        tables: List of tables to perform data quality checks on, separated by commas.
     """
     tables = tables.split(',')
     for table in tables:
         engine = create_engine(CONN_STRING, pool_size=10, max_overflow=20)
         conn = engine.raw_connection()
         cursor = conn.cursor()
-        query_records = '''SELECT COUNT(*) FROM {table}'''
-        if len(query_records) < 1 or len(query_records[0]) < 1:
-            raise ValueError(f"Data quality check failed. {table} returned no result.")
-        logging.info(f"Data quality on table {table} check passed with {len(query_records)} number of records")
-        num_records = query_records[0][0]
-        if num_records < 1:
-            raise ValueError(f"Data quality check failed. {table} contained 0 rows")
-        logging.info(f"Data quality on table {table} check passed with {query_records[0][0]} number of records")
 
+        query = f"SELECT COUNT(*) FROM {table}"
+        
+        try:
+            cursor.execute(query)
+            query_records = cursor.fetchall()
+            
+            if len(query_records) < 1 or len(query_records[0]) < 1:
+                raise ValueError(f"Data quality check failed. {table} returned no result.")
+            
+            num_records = query_records[0][0]
+            if num_records < 1:
+                raise ValueError(f"Data quality check failed. {table} contained 0 rows")
+            
+            logging.info(f"Data quality on table {table} check passed with {num_records} number of records")
+        
+        except Exception as e:
+            logging.error(f"Data quality check failed for table {table}: {e}")
+            raise
+        
+        finally:
+            cursor.close()
+            conn.close()
 
 def local_to_blob_storage(file_path: str, prefix: str, file_name):
     """
@@ -115,14 +138,14 @@ def local_to_blob_storage(file_path: str, prefix: str, file_name):
     container_name = creds["container_nm"] 
     blob_service_client = BlobServiceClient.from_connection_string(connection_string)
     blob_client = blob_service_client.get_blob_client(container=container_name, blob=file_name)
-    if prefix == 'top5_presc':
+    if prefix == 'corporation':
         with open(file_path,"rb") as data:
             blob_client.upload_blob(data)
+
     else:
         with open(file_path, "rb") as data:
                 blob_client.upload_blob(data)
     logging.info("{} successfully uploaded to azure blob storage".format(file_name))
-  
 
 def cleaning_process():
     """
