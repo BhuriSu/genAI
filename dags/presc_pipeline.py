@@ -15,20 +15,16 @@ from airflow.contrib.sensors.file_sensor import FileSensor
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.utils.dates import days_ago
 
-
 # config variables
 creds = Variable.get("my_credential_secrets", deserialize_json=True)
-
 
 def local_filesTo_s3(filepath, key, bucket_name):
     """
     functions to load files from local to s3 bucket
-
     Args:
         filepath: source of the files to be uploaded
         key: folder to write data to s3
         bucket_name: name of the bucket
-
     """
     s3 = S3Hook(aws_conn_id="aws_default")
     ingested_date = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
@@ -49,54 +45,37 @@ def local_filesTo_s3(filepath, key, bucket_name):
     print("upload to s3 successful ...")
     
 
-
-
 def load_files_to_DB(file_name, data_path):
     """
-    function that inserts all transformed data into a Postgres database
-
+    Function that inserts all transformed data into a Postgres database.
     Args:
-        file_name: name of file to copy to DB
-        data_path: directory pointing to file
-    
+        file_name: name of the file to copy to DB
+        data_path: directory pointing to the file
     """
     engine = create_engine(str(Variable.get("DB_CONN")))
     for f in glob.glob(data_path):
-       filename = f.rsplit('/')[-1]
-    if filename == file_name:
-        df = pd.read_csv(data_path)
-        #drops old table and creates new empty table using dataframe schema
-        df.head(0).to_sql('prescriber_report', engine, if_exists='replace',index=False) 
-        conn = engine.raw_connection()
-        cur = conn.cursor()
-        output = io.StringIO()
-        df.to_csv(output, sep='\t', header=False, index=False)
-        output.seek(0)
-        contents = output.getvalue()
-        # skip any line which does not match the required field
-        try:
-            cur.copy_from(output, 'prescriber_report', null="") # set null values to ''
-        except:
-            pass
-    else:
-        df = pd.read_csv(data_path)
-        df.head(0).to_sql('city_report', engine, if_exists='replace',index=False) 
-        conn = engine.raw_connection()
-        cur = conn.cursor()
-        output = io.StringIO()
-        df.to_csv(output, sep='\t', header=False, index=False)
-        output.seek(0)
-        contents = output.getvalue()
-        # skip any line which does not match the required field
-        try:
-            cur.copy_from(output, 'city_report', null="") # set null values to ''
-        except:
-            pass
+        filename = f.rsplit('/')[-1]
+    
+    df = pd.read_csv(data_path)
+    # Drops old table and creates new empty table using data frame schema
+    df.head(0).to_sql('corporation_report', engine, if_exists='replace', index=False)
+    conn = engine.raw_connection()
+    cur = conn.cursor()
+    output = io.StringIO()
+    df.to_csv(output, sep='\t', header=False, index=False)
+    output.seek(0)
+    contents = output.getvalue()
+    # Skip any line which does not match the required field
+    try:
+        cur.copy_from(output, 'corporation_report', null="") # set null values to ''
+    except:
+        pass
+    
     if conn is not None:
         conn.commit()
         cur.close()
         conn.close()
-        print("data insertion to database is completed...")
+        print("Data insertion to database is completed...")
 
 
 def data_quality_checks(tables):
@@ -121,8 +100,6 @@ def data_quality_checks(tables):
         logging.info(f"Data quality on table {table} check passed with {query_records[0][0]} number of records")
 
 
-
-
 def local_to_blob_storage(file_path: str, prefix: str, file_name):
     """
     This function copies all the transformed data to azure blob container
@@ -141,7 +118,6 @@ def local_to_blob_storage(file_path: str, prefix: str, file_name):
     if prefix == 'top5_presc':
         with open(file_path,"rb") as data:
             blob_client.upload_blob(data)
-
     else:
         with open(file_path, "rb") as data:
                 blob_client.upload_blob(data)
@@ -164,127 +140,77 @@ def cleaning_process():
 
 
 default_args = {
-    'owner': 'judeleonard',
+    'owner': 'bhuri',
     'retries': 1,
     #'start_date': days_ago(5),
     'start_date': datetime.now(),
     'retry_delay': timedelta(seconds=3)
 }
 
-with DAG('prescriber_ingestion_pipeline',
+with DAG('Corporation_ingestion_pipeline',
          schedule_interval='@weekly',
          default_args = default_args,
-         description ='Prescriber data ingestion pipeline',
+         description ='Corporation data ingestion pipeline',
          catchup=False) as dag:
-    
 
     spark_operation_task = BashOperator(
         task_id ='run_spark_etl_job',
         bash_command='python /opt/airflow/scripts/spark_etl.py',
-
     )
 
-    sensing_transformed_fact_data_task = FileSensor(
-        task_id='sensing_transformed_fact_data',
-        fs_conn_id='prescriber_default',
-        filepath='/opt/airflow/staging/top5_prescribers.csv',
+    sensing_transformed_corporation_data_task = FileSensor(
+        task_id='Corporation_data',
+        fs_conn_id='Corporation_default',
+        filepath='/opt/airflow/staging/corporation-financial.csv',
         poke_interval=10,
-        
     )
 
-    sensing_transformed_city_data_task = FileSensor(
-        task_id='sensing_transformed_city_data',
-        fs_conn_id='city_default',
-        filepath='/opt/airflow/staging/city.csv',
-        poke_interval=10,
-        
-    )
-
-    loading_prescriber_report_toS3_task = PythonOperator(
-        task_id = 'loading_prescriber_report_to_S3',
+    loading_corporation_report_toS3_task = PythonOperator(
+        task_id = 'corporation_financial_report_to_S3',
         python_callable=local_filesTo_s3,
         op_kwargs={
-            'filepath': '/opt/airflow/staging/top5_prescribers.csv',
-            'bucket_name': creds['s3_bucketname_prsc'],
+            'filepath': '/opt/airflow/staging/corporation-financial.csv',
+            'bucket_name': creds['s3_bucketname_corporation'],
            # 'key': str(Variable.get('key'))
-            'key': 'prescribers'
+            'key': 'corporation'
             },
     )
 
-
-    loading_city_report_toS3_task = PythonOperator(
-        task_id = 'loading_city_report_to_S3',
-        python_callable=local_filesTo_s3,
-        op_kwargs={
-            'filepath': '/opt/airflow/staging/city.csv',
-            'bucket_name': creds['s3_bucketname_city'],
-           # 'key': str(Variable.get('key'))
-            'key': 'city_report'
-            },
-    )
-
-    loading_prescriber_to_Postgres_task = PythonOperator(
-        task_id = 'loading_prescriber_report_to_postgres',
+    loading_corporation_to_Postgres_task = PythonOperator(
+        task_id = 'corporation_financial_report_to_postgres',
         python_callable=load_files_to_DB,
         op_kwargs={
-            'file_name': 'top5_prescribers.csv',
-            'data_path': '/opt/airflow/staging/top5_prescribers.csv',
-
+            'file_name': 'corporation-financial.csv',
+            'data_path': '/opt/airflow/staging/corporation-financial.csv',
             }, 
     )
 
-    loading_city_report_to_Postgres_task = PythonOperator(
-        task_id = 'loading_city_report_to_postgres',
-        python_callable=load_files_to_DB,
-        op_kwargs={
-            'file_name': 'city.csv',
-            'data_path': '/opt/airflow/staging/city.csv',
-
-            },  
-    )
-
-    loading_city_report_to_azure_task = PythonOperator(
-        task_id = 'loading_city_report_to_azure_blob',
+    loading_corporation_report_to_azure_task = PythonOperator(
+        task_id = 'corporation_financial_report_to_azure_blob',
         python_callable=local_to_blob_storage,
         op_kwargs={
-            'file_path': '/opt/airflow/staging/top5_prescribers.csv',
-            'prefix': 'top5_presc',
-            'file_name': 'top5_prescribers.csv'
-
-            }, 
-    )
-
-    loading_prescribers_report_to_azure_task = PythonOperator(
-        task_id = 'loading_prescriber_report_to_azure_blob',
-        python_callable=local_to_blob_storage,
-        op_kwargs={
-            'file_path': '/opt/airflow/staging/city.csv',
-            'prefix': 'city',
-            'file_name': 'city.csv'
-
+            'file_path': '/opt/airflow/staging/corporation-financial.csv',
+            'prefix': 'corporation-financial',
+            'file_name': 'corporation-financial.csv'
             }, 
     )
 
     data_quality_check_task = PythonOperator(
         task_id = 'data_quality_checks',
         python_callable=data_quality_checks,
-        op_kwargs={'tables': 'prescriber_report, city_report'},
-        
+        op_kwargs={'tables': 'corporation_report'},
     )
 
     start_execution_task = DummyOperator(
         task_id = 'start_execution',
-        
     )
 
     transformed_data_ready_task = DummyOperator(
         task_id = 'transformed_data_ready',
-        
     )
 
     loaded_data_ready_task = DummyOperator(
         task_id = 'loaded_data_ready',
-        
     )
 
     clean_up_task = PythonOperator(
@@ -294,29 +220,16 @@ with DAG('prescriber_ingestion_pipeline',
 
     end_execution_task = DummyOperator(
         task_id = 'end_execution',
-        
     )
 
-
-
-
-
-    start_execution_task >> spark_operation_task >> [sensing_transformed_city_data_task, 
-                                                    sensing_transformed_fact_data_task]
-
-    [sensing_transformed_city_data_task, 
-    sensing_transformed_fact_data_task] >> transformed_data_ready_task
-    transformed_data_ready_task >> [loading_prescriber_report_toS3_task,
-                                    loading_city_report_toS3_task,
-                                    loading_city_report_to_Postgres_task,
-                                    loading_prescriber_to_Postgres_task,
-                                    loading_city_report_to_azure_task,
-                                    loading_prescribers_report_to_azure_task]
-    [loading_prescriber_report_toS3_task,
-     loading_city_report_toS3_task,
-     loading_city_report_to_Postgres_task,
-     loading_prescriber_to_Postgres_task,
-     loading_city_report_to_azure_task,
-     loading_prescribers_report_to_azure_task] >> loaded_data_ready_task >> data_quality_check_task
+    start_execution_task >> spark_operation_task >> sensing_transformed_corporation_data_task
+                                                 
+    sensing_transformed_corporation_data_task >> transformed_data_ready_task
+    transformed_data_ready_task >> [loading_corporation_report_toS3_task,
+                                    loading_corporation_to_Postgres_task,
+                                    loading_corporation_report_to_azure_task]
+    [loading_corporation_report_toS3_task,
+     loading_corporation_to_Postgres_task,
+     loading_corporation_report_to_azure_task] >> loaded_data_ready_task >> data_quality_check_task
 
     data_quality_check_task >> clean_up_task >> end_execution_task
