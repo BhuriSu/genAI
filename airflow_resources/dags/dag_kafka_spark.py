@@ -9,6 +9,7 @@ from src.kafka_client.kafka_stream_data import stream
 
 start_date = datetime.today() - timedelta(days=1)
 
+
 default_args = {
     "owner": "airflow",
     "start_date": start_date,
@@ -16,17 +17,20 @@ default_args = {
     "retry_delay": timedelta(seconds=5),
 }
 
+
 with DAG(
     dag_id="kafka_spark_dag",
     default_args=default_args,
     schedule_interval=timedelta(days=1),
     catchup=False,
 ) as dag:
+
     kafka_stream_task = PythonOperator(
         task_id="kafka_data_stream",
         python_callable=stream,
         dag=dag,
     )
+
     spark_stream_task = DockerOperator(
         task_id="pyspark_consumer",
         image="rappel-conso/spark:latest",
@@ -38,5 +42,6 @@ with DAG(
         network_mode="airflow-kafka",
         dag=dag,
     )
-    
+
+
     kafka_stream_task >> spark_stream_task

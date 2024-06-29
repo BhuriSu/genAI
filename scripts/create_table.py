@@ -28,10 +28,10 @@ def try_execute_sql(sql: str):
 
 def create_table():
     """
-    Creates the List Breweries table and its columns.
+    Creates the rappel_conso table and its columns.
     """
     create_table_sql = f"""
-    CREATE TABLE list_breweries_table (
+    CREATE TABLE rappel_conso_table (
         {DB_FIELDS[0]} text PRIMARY KEY,
     """
     for field in DB_FIELDS[1:-1]:
