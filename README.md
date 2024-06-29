@@ -1,4 +1,4 @@
-# Data Engineering System project 
+# Data Engineering System Project 
 This project uses different tools such as kafka, airflow, spark, postgres and docker. 
 
 ## Overview
