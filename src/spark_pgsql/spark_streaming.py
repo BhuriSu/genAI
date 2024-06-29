@@ -20,7 +20,6 @@ def create_spark_session() -> SparkSession:
         .config(
             "spark.jars.packages",
             "org.postgresql:postgresql:42.5.4,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0",
-
         )
         .getOrCreate()
     )
@@ -38,7 +37,7 @@ def create_initial_dataframe(spark_session):
         df = (
             spark_session.readStream.format("kafka")
             .option("kafka.bootstrap.servers", "kafka:9092")
-            .option("subscribe", "rappel_conso")
+            .option("subscribe", "list_breweries")
             .option("startingOffsets", "earliest")
             .load()
         )
@@ -67,14 +66,14 @@ def create_final_dataframe(df):
 
 def start_streaming(df_parsed, spark):
     """
-    Starts the streaming to table spark_streaming.rappel_conso in postgres
+    Starts the streaming to table spark_streaming.list_breweries in postgres
     """
     # Read existing data from PostgreSQL
     existing_data_df = spark.read.jdbc(
-        POSTGRES_URL, "rappel_conso_table", properties=POSTGRES_PROPERTIES
+        POSTGRES_URL, "list_breweries_table", properties=POSTGRES_PROPERTIES
     )
 
-    unique_column = "reference_fiche"
+    unique_column = "id"
 
     logging.info("Start streaming ...")
     query = df_parsed.writeStream.foreachBatch(
@@ -83,7 +82,7 @@ def start_streaming(df_parsed, spark):
                 existing_data_df, batch_df[unique_column] == existing_data_df[unique_column], "leftanti"
             )
             .write.jdbc(
-                POSTGRES_URL, "rappel_conso_table", "append", properties=POSTGRES_PROPERTIES
+                POSTGRES_URL, "list_breweries_table", "append", properties=POSTGRES_PROPERTIES
             )
         )
     ).trigger(once=True) \

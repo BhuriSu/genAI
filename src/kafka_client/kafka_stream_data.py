@@ -2,10 +2,7 @@ from src.constants import (
     URL_API,
     PATH_LAST_PROCESSED,
     MAX_LIMIT,
-    MAX_OFFSET,
 )
-
-from .transformations import transform_row
 
 import kafka.errors
 import json
@@ -30,21 +27,6 @@ def get_latest_timestamp():
             return datetime.datetime.min
 
 
-def update_last_processed_file(data: List[dict]):
-    """
-    Updates the last_processed.json file with the latest timestamp. Since the comparison is strict
-    on the field date_de_publication, we set the new last_processed day to the latest timestamp minus one day.
-    """
-    publication_dates_as_timestamps = [
-        datetime.datetime.strptime(row["date_de_publication"], "%Y-%m-%d")
-        for row in data
-    ]
-    last_processed = max(publication_dates_as_timestamps) - datetime.timedelta(days=1)
-    last_processed_as_string = last_processed.strftime("%Y-%m-%d")
-    with open(PATH_LAST_PROCESSED, "w") as file:
-        json.dump({"last_processed": last_processed_as_string}, file)
-
-
 def get_all_data(last_processed_timestamp: datetime.datetime) -> List[dict]:
     n_results = 0
     full_data = []
@@ -59,16 +41,6 @@ def get_all_data(last_processed_timestamp: datetime.datetime) -> List[dict]:
         n_results += len(current_results)
         if len(current_results) < MAX_LIMIT:
             break
-        # The sum of offset + limit API parameter must be lower than 10000.
-        if n_results + MAX_LIMIT >= MAX_OFFSET:
-            # If it is the case, change the last_processed_timestamp parameter to the date_de_publication
-            # of the last retrieved result, minus one day. In case of duplicates, they will be filtered
-            # in the deduplicate_data function. We also reset n_results (or the offset parameter) to 0.
-            last_timestamp = current_results[-1]["date_de_publication"]
-            timestamp_as_date = datetime.datetime.strptime(last_timestamp, "%Y-%m-%d")
-            timestamp_as_date = timestamp_as_date - datetime.timedelta(days=1)
-            last_processed_timestamp = timestamp_as_date.strftime("%Y-%m-%d")
-            n_results = 0
 
     logging.info(f"Got {len(full_data)} results from the API")
 
@@ -76,7 +48,7 @@ def get_all_data(last_processed_timestamp: datetime.datetime) -> List[dict]:
 
 
 def deduplicate_data(data: List[dict]) -> List[dict]:
-    return list({v["reference_fiche"]: v for v in data}.values())
+    return list({v["id"]: v for v in data}.values())
 
 
 def query_data() -> List[dict]:
@@ -87,17 +59,8 @@ def query_data() -> List[dict]:
     full_data = get_all_data(last_processed)
     full_data = deduplicate_data(full_data)
     if full_data:
-        update_last_processed_file(full_data)
-    return full_data
-
-
-def process_data(row):
-    """
-    Processes the data from the API
-    """
-    return transform_row(row)
-
-
+        return full_data
+        
 def create_kafka_producer():
     """
     Creates the Kafka producer object
@@ -116,13 +79,13 @@ def create_kafka_producer():
 
 def stream():
     """
-    Writes the API data to Kafka topic rappel_conso
+    Writes the API data to Kafka topic list_breweries
     """
     producer = create_kafka_producer()
     results = query_data()
-    kafka_data_full = map(process_data, results)
+    kafka_data_full = map(results)
     for kafka_data in kafka_data_full:
-        producer.send("rappel_conso", json.dumps(kafka_data).encode("utf-8"))
+        producer.send("list_breweries", json.dumps(kafka_data).encode("utf-8"))
 
 
 if __name__ == "__main__":
