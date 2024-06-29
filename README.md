@@ -1,4 +1,4 @@
-# Building a simple End-to-End Data Engineering System 
+# Data Engineering System project 
 This project uses different tools such as kafka, airflow, spark, postgres and docker. 
 
 ## Overview
