@@ -4,11 +4,11 @@ from datetime import timedelta, datetime
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.docker.operators.docker import DockerOperator
-from airflow.operators.dummy import DummyOperator
-from airflow.operators.bash import BashOperator
-from airflow.decorators import task
-from cuallee import Check, CheckLevel
-import polars as pl
+# from airflow.operators.dummy import DummyOperator
+# from airflow.operators.bash import BashOperator
+# from airflow.decorators import task
+# from cuallee import Check, CheckLevel
+# import polars as pl
 
 
 from src.kafka_client.kafka_stream_data import stream
@@ -35,7 +35,7 @@ with DAG(
     catchup=False,
 ) as dag:
     
-    file_path = f'{os.getenv("AIRFLOW_HOME")}/data/corporation_financial.csv'
+    # file_path = f'{os.getenv("AIRFLOW_HOME")}/data/corporation_financial.csv'
 
 
     kafka_stream_task = PythonOperator(
@@ -56,43 +56,43 @@ with DAG(
         dag=dag,
     )
     
-    @task
-    def corporation_financial_exchanges(file_path):
-        exchanges = []
-        if exchanges:
-            with open(file_path, 'w') as f:
-                dict_reader = csv.DictReader(f)
-                for row in dict_reader:
-                    exchanges.append(row)
-            return exchanges
+    # @task
+    # def corporation_financial_exchanges(file_path):
+    #     exchanges = []
+    #     if exchanges:
+    #         with open(file_path, 'w') as f:
+    #             dict_reader = csv.DictReader(f)
+    #             for row in dict_reader:
+    #                 exchanges.append(row)
+    #         return exchanges
                 
 
-    def check_completeness(pl_df, column_name):
-        check = Check(CheckLevel.ERROR, "Completeness")
-        validation_results_df = (
-            check.is_complete(column_name).validate(pl_df)
-        )
-        return validation_results_df["status"].to_list()
+    # def check_completeness(pl_df, column_name):
+    #     check = Check(CheckLevel.ERROR, "Completeness")
+    #     validation_results_df = (
+    #         check.is_complete(column_name).validate(pl_df)
+    #     )
+    #     return validation_results_df["status"].to_list()
     
-    @task.branch
-    def check_data_quality(validation_results):
-        if "FAIL" not in validation_results:
-            return ['generate_dashboard']
-        return ['stop_pipeline']
+    # @task.branch
+    # def check_data_quality(validation_results):
+    #     if "FAIL" not in validation_results:
+    #         return ['generate_dashboard']
+    #     return ['stop_pipeline']
     
-    check_data_quality_instance = check_data_quality(check_completeness(pl.read_csv(file_path), "name"))
+    # check_data_quality_instance = check_data_quality(check_completeness(pl.read_csv(file_path), "name"))
 
-    stop_pipeline = DummyOperator(task_id='stop_pipeline')
+    # stop_pipeline = DummyOperator(task_id='stop_pipeline')
 
-    markdown_path = f'{os.getenv("AIRFLOW_HOME")}/visualization/'
-    q_cmd = (
-        f'cd {markdown_path} && quarto render {markdown_path}/dashboard.qmd'
-    )
-    gen_dashboard = BashOperator(
-        task_id="generate_dashboard", bash_command=q_cmd
-    )
+    # markdown_path = f'{os.getenv("AIRFLOW_HOME")}/visualization/'
+    # q_cmd = (
+    #     f'cd {markdown_path} && quarto render {markdown_path}/dashboard.qmd'
+    # )
+    # gen_dashboard = BashOperator(
+    #     task_id="generate_dashboard", bash_command=q_cmd
+    # )
 
-    corporation_financial_exchanges(file_path) >> check_data_quality_instance >> gen_dashboard
-    check_data_quality_instance >> stop_pipeline
+    # corporation_financial_exchanges(file_path) >> check_data_quality_instance >> gen_dashboard
+    # check_data_quality_instance >> stop_pipeline
 
     kafka_stream_task >> spark_stream_task

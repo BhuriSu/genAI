@@ -18,5 +18,5 @@ All of these tools will be built and run using docker, and more specifically doc
 3. python scripts/create_table.py for creating table in pgAdmin4 
 4. run in terminal >> docker build -f spark/Dockerfile -t rappel_conso/spark:latest --build-arg POSTGRES_PASSWORD={your_password} . 
 5. rin in bash >> echo -e "AIRFLOW_UID=$(id -u)\nAIRFLOW_PROJ_DIR=\"./airflow_resources\"" > .env
-6. run in terminal >>  docker compose -f docker-compose-airflow.yaml up
+6. run in terminal >>  docker compose -f docker-compose-airflow.yaml up (airflow Ui in http://localhost:8080/)
 7. query information in pgAdmin4 for example >> SELECT count(*) FROM rappel_conso_table
