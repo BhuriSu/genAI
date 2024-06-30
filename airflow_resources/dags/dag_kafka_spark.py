@@ -3,16 +3,19 @@ import os
 from datetime import timedelta, datetime
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.operators.dummy import DummyOperator
 from airflow.operators.bash import BashOperator
 from airflow.decorators import task
 from cuallee import Check, CheckLevel
 import polars as pl
 
+
 from src.kafka_client.kafka_stream_data import stream
 
 
 start_date = datetime.today() - timedelta(days=1)
+
 
 default_args = {
     "owner": "airflow",
@@ -21,20 +24,38 @@ default_args = {
     "retry_delay": timedelta(seconds=5),
 }
 
+
 with DAG(
     dag_id="kafka_spark_dag",
     default_args=default_args,
+    description='A simple DAG to fetch data \
+    from corporation_financial and write to a file \
+    and load france open data into database postgresql',
     schedule_interval=timedelta(days=1),
     catchup=False,
 ) as dag:
-     
+    
     file_path = f'{os.getenv("AIRFLOW_HOME")}/data/corporation_financial.csv'
-    kafka_stream_task = PythonOperator( 
+
+
+    kafka_stream_task = PythonOperator(
         task_id="kafka_data_stream",
         python_callable=stream,
         dag=dag,
     )
 
+    spark_stream_task = DockerOperator(
+        task_id="pyspark_consumer",
+        image="rappel-conso/spark:latest",
+        api_version="auto",
+        auto_remove=True,
+        command="./bin/spark-submit --master local[*] --packages org.postgresql:postgresql:42.5.4,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 ./spark_streaming.py",
+        docker_url='tcp://docker-proxy:2375',
+        environment={'SPARK_LOCAL_HOSTNAME': 'localhost'},
+        network_mode="airflow-kafka",
+        dag=dag,
+    )
+    
     @task
     def corporation_financial_exchanges(file_path):
         exchanges = []
@@ -73,3 +94,5 @@ with DAG(
 
     corporation_financial_exchanges(file_path) >> check_data_quality_instance >> gen_dashboard
     check_data_quality_instance >> stop_pipeline
+
+    kafka_stream_task >> spark_stream_task

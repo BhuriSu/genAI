@@ -75,7 +75,6 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ./src:/opt/airflow/dags/src
     - ./data/last_processed.json:/opt/airflow/data/last_processed.json
-    - ./test_dag:/opt/airflow/tests
     - ./visualization:/opt/airflow/visualization
     - ./data:/opt/airflow/data
 
