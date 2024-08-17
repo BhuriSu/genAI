@@ -1,5 +1,4 @@
-# Data Engineering System Project 
-This project uses different tools such as kafka, airflow, spark, postgres and docker. 
+# Data Engineering System Project for gaming sales information
 
 ## Overview
 
