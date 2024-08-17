@@ -28,6 +28,7 @@ def clean_data(df):
     df['Name'] = df['Name'].fillna("NO Name")
     df['Platform'] = df['Platform'].fillna("NO Platform")
     df['EU_Sales'] = df['EU_Sales'].fillna(-1) #This method is used to fill any NaN (Not a Number) 
+    df['NA_Sales'] = df['NA_Sales'].fillna(-1)
     df['JP_Sales'] = df['JP_Sales'].fillna(-1)
     df['Global_Sales'] = df['Global_Sales'].fillna(-1)
 
@@ -37,49 +38,55 @@ def clean_data(df):
 def create_schema(df):
     """Build a star schema"""
 
-    supplier_df = df[['SUPPLIER']]
-    supplier_df = supplier_df.drop_duplicates()
-    supplier_df = supplier_df.reset_index(drop=True)
-    supplier_df = supplier_df.reset_index(names="SUPPLIER_ID")
-    supplier_df["SUPPLIER_ID"] += 1
+    name_df = df[['Name']]
+    name_df = name_df.drop_duplicates()
+    name_df = name_df.reset_index(drop=True)
+    name_df = name_df.reset_index(names="Name_ID")
+    name_df["Name_ID"] += 1
 
-    item_df = df[['ITEM CODE', 'ITEM TYPE', 'ITEM DESCRIPTION']]
-    item_df = item_df.rename(
-        columns={
-            'ITEM CODE': 'ITEM_CODE',
-            'ITEM TYPE': 'ITEM_TYPE',
-            'ITEM DESCRIPTION': 'ITEM_DESCRIPTION',
-        }
-    )
-    item_df = item_df.drop_duplicates()
+    platform_df = df[['Platform']]
+    platform_df = platform_df.reset_index(drop=True)
+    platform_df = platform_df.reset_index(names="Platform_ID")
+    platform_df["Platform_ID"] += 1
 
-    date_df = df[['YEAR', 'MONTH']]
-    date_df = date_df.drop_duplicates()
-    date_df = date_df.reset_index(drop=True)
-    date_df = date_df.reset_index(names="DATE_ID")
-    date_df["DATE_ID"] += 1
+    eu_sales_df = df[['EU_Sales']]
+    eu_sales_df = eu_sales_df.reset_index(drop=True)
+    eu_sales_df = eu_sales_df.reset_index(names="EU_Sales_ID")
+    eu_sales_df["EU_Sales_ID"] += 1
+
+    na_sales_df = df[['NA_Sales']]
+    na_sales_df = na_sales_df.reset_index(drop=True)
+    na_sales_df = na_sales_df.reset_index(names="NA_Sales_ID")
+    na_sales_df["NA_Sales_ID"] += 1
+
+    jp_sales_df = df[['JP_Sales']]
+    jp_sales_df = jp_sales_df.reset_index(drop=True)
+    jp_sales_df = jp_sales_df.reset_index(names="JP_Sales_ID")
+    jp_sales_df["JP_Sales_ID"] += 1
+
+    global_sales_df = df[['Global_Sales']]
+    global_sales_df = global_sales_df.reset_index(drop=True)
+    global_sales_df = global_sales_df.reset_index(names="Global_Sales_ID")
+    global_sales_df["Global_Sales_ID"] += 1
 
     fact_table = (
-        df.merge(supplier_df, on='SUPPLIER')
-        .merge(item_df, left_on="ITEM CODE", right_on="ITEM_CODE")
-        .merge(date_df, on=["YEAR", "MONTH"])[
-            [
-                'ITEM_CODE',
-                'SUPPLIER_ID',
-                'DATE_ID',
-                'RETAIL SALES',
-                'RETAIL TRANSFERS',
-                'WAREHOUSE SALES',
-            ]
-        ]
+        df.merge(name_df, on='Name')
+        .merge(platform_df, on='Platform')
+        .merge(eu_sales_df, on='EU_Sales')
+        .merge(na_sales_df, on='NA_Sales')
+        .merge(jp_sales_df, on='JP_Sales')
+        .merge(global_sales_df, on='Global_Sales')
     )
 
     fact_table = fact_table.drop_duplicates()
 
     return {
-        "Supplier": supplier_df.to_dict(orient="dict"),
-        "Item": item_df.to_dict(orient="dict"),
-        "Date": date_df.to_dict(orient="dict"),
+        "Name": name_df.to_dict(orient="dict"),
+        "Platform": platform_df.to_dict(orient="dict"),
+        "EU_Sales": eu_sales_df.to_dict(orient="dict"),
+        "NA_Sales": na_sales_df.to_dict(orient="dict"),
+        "JP_Sales": jp_sales_df.to_dict(orient="dict"),
+        "Global_Sales": global_sales_df.to_dict(orient="dict"),
         "Fact_table": fact_table.to_dict(orient="dict"),
     }
 
