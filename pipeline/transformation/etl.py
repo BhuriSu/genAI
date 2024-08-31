@@ -109,7 +109,7 @@ def load_tables_staging(dict, engine):
             )
 
             logger.info('!!!!!!!!')
-            logger.info(f'Table {df_name} loaded succesfully')
+            logger.info(f'Table {df_name} loaded successfully')
 
     except Exception as e:
         logger.error("!!!!!!!!!!!!!!!!!!!!!!")

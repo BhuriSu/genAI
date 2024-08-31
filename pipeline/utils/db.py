@@ -12,7 +12,7 @@ class DBConnection:
 class WarehouseConnection:
     def __init__(self, db_conn: DBConnection):
         self.conn_url = (
-            f'postgresql://{db_conn.user}:{db_conn.pwd}@'
+            f'mysql://{db_conn.user}:{db_conn.pwd}@'
             f'{db_conn.host}:{db_conn.port}/{db_conn.database}'
         )
 

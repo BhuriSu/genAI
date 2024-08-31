@@ -7,27 +7,27 @@ services:
     volumes:
       - ./:/app
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DB: ${MYSQL_DB}
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
       TABLE_NAME: ${TABLE_NAME}
       FILE_PATH: ${FILE_PATH}
 
   warehouse: 
-    image: postgres:13
+    image: mysql:13
     container_name: warehouse
     environment: 
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DB: ${MYSQL_DB}
     volumes: 
-      - postgres-volume:/var/lib/postgresql/data
+      - MYSQL-volume:/var/lib/MYSQLql/data
       - ./sql:/docker-entrypoint-initdb.d
     restart: always
     ports: 
-      - "5432:5432"
+      - "3306:3306"
 
   metabase:
     image: metabase/metabase:latest
@@ -40,6 +40,6 @@ services:
     restart: always
 
 volumes:
-  postgres-volume:
+  MYSQL-volume:
   urandom: 
 

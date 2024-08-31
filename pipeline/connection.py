@@ -17,14 +17,14 @@ def create_conn(
         get_warehouse_creds()
     ).connection_string(),
 ):
-    # connect to the postgres database
+    # connect to the mysql database
     try:
         engine = create_engine(connection_string)
-        logger.info("Connected to postgres database!!")
+        logger.info("Connected to mysql database!!")
         return engine
     except Exception as e:
         logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        logger.error(f"Enable to connect to postgres : {e}")
+        logger.error(f"Enable to connect to mysql : {e}")
 
 
 def close_conn(engine):
