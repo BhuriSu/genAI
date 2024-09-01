@@ -16,14 +16,14 @@ services:
       FILE_PATH: ${FILE_PATH}
 
   warehouse: 
-    image: mysql:13
+    image: mysql
     container_name: warehouse
     environment: 
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DB: ${MYSQL_DB}
     volumes: 
-      - MYSQL-volume:/var/lib/MYSQLql/data
+      - mysql-volume:/var/lib/mysql/data
       - ./sql:/docker-entrypoint-initdb.d
     restart: always
     ports: 
@@ -40,6 +40,6 @@ services:
     restart: always
 
 volumes:
-  MYSQL-volume:
+  mysql-volume:
   urandom: 
 

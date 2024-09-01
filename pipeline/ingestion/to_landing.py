@@ -8,7 +8,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-
 def load_table_to_landing(df, engine, table_name):
     # load the csv file to the schema
     try:
