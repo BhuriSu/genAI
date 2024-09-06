@@ -8,14 +8,14 @@ pandas==2.1.1
 # OpenAI API for language model queries
 openai==0.28.0
 
-# LangChain for advanced prompt management (optional)
+# LangChain for advanced prompt management 
 langchain==0.0.304
 
-# SQLAlchemy for handling database interactions (optional)
+# SQLAlchemy for handling database interactions 
 sqlalchemy==2.0.20
 
 # Pydantic for data validation and type hinting
 pydantic==1.10.11
 
-# Any other utilities you might need (optional)
+# Any other utilities you might need 
 python-dotenv==1.0.0  # For environment variable management if needed
