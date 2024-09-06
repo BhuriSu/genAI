@@ -1,9 +1,21 @@
-pandas
-configparser
-sqlalchemy
-psycopg2
-pytest
-black
-flake8
-mypy
-isort
+# FastAPI and Uvicorn for serving the API
+fastapi==0.103.1
+uvicorn==0.22.0
+
+# Pandas for handling CSV data
+pandas==2.1.1
+
+# OpenAI API for language model queries
+openai==0.28.0
+
+# LangChain for advanced prompt management (optional)
+langchain==0.0.304
+
+# SQLAlchemy for handling database interactions (optional)
+sqlalchemy==2.0.20
+
+# Pydantic for data validation and type hinting
+pydantic==1.10.11
+
+# Any other utilities you might need (optional)
+python-dotenv==1.0.0  # For environment variable management if needed
