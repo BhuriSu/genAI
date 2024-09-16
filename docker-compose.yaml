@@ -10,8 +10,8 @@ services:
     networks:
       - my_docker
     environment:
-      MINIO_ACCESS_KEY: "root"
-      MINIO_SECRET_KEY: "root12345"
+      MINIO_ROOT_USER: "root"
+      MINIO_ROOT_PASSWORD: "root12345"
     command: server /data --console-address ":9001"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live" ]
