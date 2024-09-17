@@ -1,0 +1,155 @@
+
+services:
+  # Minio (Object Storage)
+  minio:
+    container_name: minio
+    image: minio/minio:latest
+    volumes:
+      - minio:/data
+    ports:
+      - "7000:9000"
+      - "7001:9001"
+    networks:
+      - my_docker
+    environment:
+      MINIO_ROOT_USER: "root"
+      MINIO_ROOT_PASSWORD: "root12345"
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Elasticsearch (Search Engine)
+  es:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.9.0
+    container_name: es
+    environment:
+      - node.name=es
+      - cluster.name=es-docker-single
+      - discovery.seed_hosts=es
+      - cluster.initial_master_nodes=es
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms1024m -Xmx1024m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    networks:
+      - elastic
+
+  # Kibana (Elasticsearch UI)
+  kib:
+    image: docker.elastic.co/kibana/kibana:7.9.0
+    depends_on:
+      - es
+    container_name: kib
+    ports:
+      - 5601:5601
+    environment:
+      ELASTICSEARCH_URL: http://es:9200
+      ELASTICSEARCH_HOSTS: http://es:9200
+    networks:
+      - elastic
+
+  # Zookeeper (Required for Kafka)
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    container_name: zookeeper
+    ports:
+      - "22181:2181"
+    networks:
+      - kafka-net
+
+  # Kafka (Distributed Event Streaming Platform)
+  kafka:
+    image: wurstmeister/kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9093,OUTSIDE://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_LISTENERS: INSIDE://0.0.0.0:9093,OUTSIDE://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CREATE_TOPICS: "my-topic:1:1"
+    ports:
+      - "9092:9092"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - kafka-net
+
+  # PostgreSQL (Airflow backend)
+  postgres:
+    image: postgres:13
+    container_name: postgres_etl
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+    networks:
+      - airflow-net
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+   # Apache Airflow Webserver
+  airflow-webserver:
+    image: apache/airflow:2.6.2
+    container_name: airflow-webserver
+    environment:
+      - LOAD_EX=n
+      - EXECUTOR=Local
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=airflow
+      - _AIRFLOW_WWW_USER_PASSWORD=airflow
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - airflow-scheduler
+    networks:
+      - airflow-net
+    command: bash -c "airflow db init && airflow webserver"
+
+  # Apache Airflow Scheduler
+  airflow-scheduler:
+    image: apache/airflow:2.6.2
+    container_name: airflow-scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    volumes:
+      - ./dags:/usr/local/airflow/dags
+    depends_on:
+      - postgres
+    networks:
+      - airflow-net
+    command: bash -c "airflow db init && airflow scheduler"
+
+volumes:
+  minio:
+  data:
+    driver: local
+  postgres_data:
+    driver: local
+
+networks:
+  my_docker:
+  elastic:
+    driver: bridge
+  kafka-net:
+    driver: bridge
+  airflow-net:
+    driver: bridge

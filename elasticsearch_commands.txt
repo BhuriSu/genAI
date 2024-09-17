@@ -1,0 +1,43 @@
+# If we want to get information directly on Elasticsearch, we can run the following commands:
+
+# Create a new index tourist_input:
+
+PUT /tourist_input
+
+# Delete the index tourist_input:
+
+DELETE /tourist_input
+
+# Get information about all indices:
+
+GET /_cat/indices?v
+
+# Create the data schema for index tourist_input:
+
+PUT /tourist_input
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+        "properties": {
+            "date": {"type": "date",
+            "format": "yyyy-MM-d hh:mm:ss||yyyy-MM-dd hh:mm:ss||yyyy-MM-dd HH:mm:ss||yyyy-MM-d HH:mm:ss",
+            "ignore_malformed": "true"
+      },
+            "province_eng": {"type": "string"},
+            "region_eng": {"type": "string"},
+            "value": {"type": "float"}
+        }
+    }
+}
+
+# Delete all the documents inside the index:
+
+POST /tourist_input/_delete_by_query?
+{
+  "query": {
+    "match_all": {}
+  }
+}
