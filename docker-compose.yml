@@ -2,12 +2,11 @@
 services:
   # Minio (Object Storage)
   minio:
-    container_name: minio
     image: minio/minio:latest
+    container_name: minio
     volumes:
       - minio:/data
     ports:
-      - "7000:9000"
       - "7001:9001"
     networks:
       - my_docker
@@ -46,9 +45,9 @@ services:
   # Kibana (Elasticsearch UI)
   kib:
     image: docker.elastic.co/kibana/kibana:7.9.0
+    container_name: kibana
     depends_on:
       - es
-    container_name: kib
     ports:
       - 5601:5601
     environment:
@@ -99,7 +98,7 @@ services:
     networks:
       - airflow-net
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./postgres_data:/var/lib/postgresql/data
 
    # Apache Airflow Webserver
   airflow-webserver:
@@ -132,6 +131,7 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     volumes:
       - ./dags:/usr/local/airflow/dags
+      - ./logs:/opt/airflow/logs 
     depends_on:
       - postgres
     networks:

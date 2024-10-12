@@ -12,7 +12,6 @@
 
 ## Overview
 
-- Take a compressed data source from a URL
 - Process the raw data with **PySpark**
 - Use **data-generator** to simulate streaming data, and send the data to **Apache Kafka**.
 - Read the streaming data from Kafka topic using **PySpark (Spark Streaming)**.
