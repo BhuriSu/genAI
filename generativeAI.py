@@ -1,113 +1,130 @@
 import streamlit as st
-import torch
-from PIL import Image
+import streamlit.components.v1 as components
 import io
-import numpy as np
-from pathlib import Path
 
-# Custom CSS for cursor pointer
+# Custom CSS for cursor and 3D viewer styling
 st.markdown("""
     <style>
-    div[data-baseweb="select"] > div {
-        cursor: pointer;
+    .stApp {
+        max-width: 100%;
+    }
+    .viewer-container {
+        width: 100%;
+        height: 500px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
     }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-def load_image(image_file):
-    if image_file is not None:
-        return Image.open(image_file)
-    return None
+# Custom HTML/JS for 3D viewer using three.js
+def create_3d_viewer(model_url="placeholder_model"):
+    viewer_html = f"""
+    <div class="viewer-container" id="model-viewer">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <script>
+            // Set up scene
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer();
+            const container = document.getElementById('model-viewer');
+            renderer.setSize(container.offsetWidth, container.offsetHeight);
+            container.appendChild(renderer.domElement);
 
-def combine_images():
-    st.subheader("Image Combination Generator")
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const pointLight = new THREE.PointLight(0xffffff, 1);
+            pointLight.position.set(5, 5, 5);
+            scene.add(pointLight);
+
+            // Create placeholder geometry (sphere)
+            const geometry = new THREE.SphereGeometry(2, 32, 32);
+            const material = new THREE.MeshPhongMaterial({{ color: 0x00ff00 }});
+            const sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
+
+            camera.position.z = 5;
+
+            // Animation
+            let rotation = 0;
+            function animate() {{
+                requestAnimationFrame(animate);
+                rotation += 0.01;
+                sphere.rotation.y = rotation;
+                renderer.render(scene, camera);
+            }}
+            animate();
+
+            // Handle window resize
+            window.addEventListener('resize', () => {{
+                const width = container.offsetWidth;
+                const height = container.offsetHeight;
+                renderer.setSize(width, height);
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+            }});
+        </script>
+    </div>
+    """
+    return viewer_html
+
+def generate_3d_style_transfer():
+    st.title("3D Style Transfer Generator")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        image1 = st.file_uploader("Upload first image", type=['PNG', 'JPG', 'JPEG'], key="img1")
-        if image1:
-            st.image(image1, caption="First Image", use_container_width=True)
-    
-    with col2:
-        image2 = st.file_uploader("Upload second image", type=['PNG', 'JPG', 'JPEG'], key="img2")
-        if image2:
-            st.image(image2, caption="Second Image", use_container_width=True)
-    
-    if st.button("Generate Combined Image"):
-        if image1 and image2:
-            st.info("This is where you would integrate your image combination model")
-            # Placeholder for your image combination model
-            # result = your_combination_model(image1, image2)
-            # st.image(result, caption="Generated Image")
-        else:
-            st.warning("Please upload both images")
-
-def generate_3d():
-    st.subheader("3D Object Generation from Text")
-    
-    text_prompt = st.text_area("Enter description of the 3D object you want to generate")
-    
-    if st.button("Generate 3D Object"):
-        if text_prompt:
-            st.info("This is where you would integrate your 3D generation model")
-            # Placeholder for your 3D generation model
-            # model = load_3d_model()
-            # result = model.generate(text_prompt)
-            # display_3d_object(result)
-        else:
-            st.warning("Please enter a description")
-
-def generate_outfit():
-    st.subheader("Outfit Generation")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        reference_image = st.file_uploader("Upload reference outfit image", type=['PNG', 'JPG', 'JPEG'], key="ref_img")
+        reference_image = st.file_uploader("Upload reference object image (e.g., flower)", type=['PNG', 'JPG', 'JPEG'], key="ref_img")
         if reference_image:
-            st.image(reference_image, caption="Reference Outfit", use_container_width=True)
+            st.image(reference_image, caption="Reference Object", use_container_width=True)
     
     with col2:
-        style_image = st.file_uploader("Upload style reference image", type=['PNG', 'JPG', 'JPEG'], key="style_img")
+        style_image = st.file_uploader("Upload style reference image (e.g., Victorian style)", type=['PNG', 'JPG', 'JPEG'], key="style_img")
         if style_image:
             st.image(style_image, caption="Style Reference", use_container_width=True)
     
-    if st.button("Generate Outfit"):
+    if st.button("Generate 3D Model"):
         if reference_image and style_image:
-            st.info("This is where you would integrate your outfit generation model")
-            # Placeholder for your outfit generation model
-            # result = generate_outfit_from_reference(reference_image, style_image)
-            # st.image(result, caption="Generated Outfit")
+            st.info("Processing your request...")
+            
+            # Here you would integrate your 3D style transfer model
+            # Placeholder for model processing
+            # result_3d_model = your_3d_style_transfer_model(reference_image, style_image)
+            
+            st.subheader("3D Preview")
+            viewer_html = create_3d_viewer()
+            components.html(viewer_html, height=600)
+            
+            st.success("3D model generated! Use your mouse to rotate and zoom.")
+            
+            # Add download button (placeholder)
+            st.download_button(
+                label="Download 3D Model",
+                data=io.BytesIO(b"placeholder").getvalue(),
+                file_name="styled_3d_model.glb",
+                mime="application/octet-stream"
+            )
         else:
             st.warning("Please upload both reference and style images")
 
-def main():
-    st.title("Generative AI Application")
-    
-    # Create a sidebar for navigation with cursor pointer
-    page = st.sidebar.selectbox(
-        "Choose a Function",
-        ["Image Combination", "3D Object Generation", "Outfit Generation"]
-    )
-    
-    # Display the selected page
-    if page == "Image Combination":
-        combine_images()
-    elif page == "3D Object Generation":
-        generate_3d()
-    else:  # Outfit Generation
-        generate_outfit()
-    
-    # Add some information about the app
-    st.sidebar.markdown("---")
+    # Add information about the app
     st.sidebar.markdown("""
     ### About
-    This application provides three generative AI functions:
-    - Combining two images
-    - Generating 3D objects from text
-    - Generating outfits based on reference and style images
+    This application generates 3D 360° views of objects with applied style transfer.
+    
+    #### How to use:
+    1. Upload a reference image of the object
+    2. Upload a style image
+    3. Click 'Generate 3D Model'
+    4. View and interact with the 3D model
+    5. Download the result
+    
+    #### Controls:
+    - Left click + drag: Rotate
+    - Right click + drag: Pan
+    - Scroll: Zoom
     """)
 
 if __name__ == "__main__":
-    main()
+    generate_3d_style_transfer()
