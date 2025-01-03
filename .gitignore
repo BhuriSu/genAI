@@ -1,2 +1,14 @@
-.venv
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+
+# Environment files
 .env
+
+# Data files
+qdrant_data/
+*.json
