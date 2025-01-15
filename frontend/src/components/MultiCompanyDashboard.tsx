@@ -5,7 +5,7 @@ import { Plus, Loader2 } from 'lucide-react';
 
 interface UrlInput {
   company: string;
-  url: string;
+  file: File | null;
 }
 
 interface Metrics {
@@ -19,31 +19,39 @@ interface AnalysisData {
 }
 
 const MultiCompanyDashboard: React.FC = () => {
-  const [urls, setUrls] = useState<UrlInput[]>([{ company: '', url: '' }]);
+  const [urls, setUrls] = useState<UrlInput[]>([{ company: '', file: null }]);
   const [loading, setLoading] = useState<boolean>(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
 
   const handleAddUrl = () => {
-    setUrls([...urls, { company: '', url: '' }]);
+    setUrls([...urls, { company: '', file: null }]);
   };
 
-  const handleInputChange = (index: number, field: keyof UrlInput, value: string) => {
+  const handleInputChange = (index: number, field: keyof UrlInput, value: string | File | null) => {
     const newUrls = [...urls];
-    newUrls[index][field] = value;
+    if (field === 'company' && typeof value === 'string') {
+      newUrls[index][field] = value;
+    } else if (field === 'file' && (value instanceof File || value === null)) {
+      newUrls[index][field] = value;
+    }
     setUrls(newUrls);
   };
 
   const handleAnalyze = async () => {
     setLoading(true);
+    const formData = new FormData();
+
+    urls.forEach((entry, index) => {
+      if (entry.company && entry.file) {
+        formData.append(`files[${index}][company]`, entry.company);
+        formData.append(`files[${index}][file]`, entry.file);
+      }
+    });
+
     try {
       const response = await fetch('/api/analyze-reports', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(
-          urls.filter(url => url.company && url.url)
-        ),
+        body: formData,
       });
       const data = await response.json();
       setAnalysisData(data.comparative_analysis);
@@ -63,7 +71,7 @@ const MultiCompanyDashboard: React.FC = () => {
         <CardContent>
           <div className="space-y-4">
             {urls.map((url, index) => (
-              <div key={index} className="flex gap-4">
+              <div key={index} className="flex gap-4 items-center">
                 <input
                   type="text"
                   placeholder="Company Name"
@@ -72,11 +80,10 @@ const MultiCompanyDashboard: React.FC = () => {
                   onChange={(e) => handleInputChange(index, 'company', e.target.value)}
                 />
                 <input
-                  type="text"
-                  placeholder="PDF URL"
+                  type="file"
+                  accept="application/pdf"
                   className="flex-1 p-2 border rounded"
-                  value={url.url}
-                  onChange={(e) => handleInputChange(index, 'url', e.target.value)}
+                  onChange={(e) => handleInputChange(index, 'file', e.target.files?.[0] || null)}
                 />
               </div>
             ))}
@@ -113,10 +120,12 @@ const MultiCompanyDashboard: React.FC = () => {
             <CardContent>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={Object.entries(analysisData.metrics.revenue).map(([company, value]) => ({
-                    company,
-                    revenue: value
-                  }))}>
+                  <BarChart
+                    data={Object.entries(analysisData.metrics.revenue).map(([company, value]) => ({
+                      company,
+                      revenue: value,
+                    }))}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="company" />
                     <YAxis />
@@ -137,10 +146,12 @@ const MultiCompanyDashboard: React.FC = () => {
             <CardContent>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={Object.entries(analysisData.metrics.gross_margin).map(([company, value]) => ({
-                    company,
-                    margin: value
-                  }))}>
+                  <BarChart
+                    data={Object.entries(analysisData.metrics.gross_margin).map(([company, value]) => ({
+                      company,
+                      margin: value,
+                    }))}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="company" />
                     <YAxis />
@@ -161,10 +172,12 @@ const MultiCompanyDashboard: React.FC = () => {
             <CardContent>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={Object.entries(analysisData.metrics.net_income).map(([company, value]) => ({
-                    company,
-                    income: value
-                  }))}>
+                  <BarChart
+                    data={Object.entries(analysisData.metrics.net_income).map(([company, value]) => ({
+                      company,
+                      income: value,
+                    }))}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="company" />
                     <YAxis />

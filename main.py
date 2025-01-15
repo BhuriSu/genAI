@@ -1,109 +1,147 @@
-# Backend (Python)
-from fastapi import FastAPI, HTTPException
-import requests
-import pdfplumber
-import pandas as pd
-import yfinance as yf
-from bs4 import BeautifulSoup
-import re
-import json
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from pydantic import BaseModel
 from typing import List, Dict
 import PyPDF2
-import io
-import numpy as np
+from transformers import pipeline
+from io import BytesIO
+import re
+import logging
+from textblob import TextBlob
 
-class FinancialReportAnalyzer:
-    def __init__(self):
-        self.reports_data = {}
+# Initialize FastAPI app
+app = FastAPI()
+
+# Load summarizer model
+try:
+    summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+except Exception as e:
+    logging.error(f"Error loading summarization model: {e}")
+    raise
+
+class URLInput(BaseModel):
+    company: str
+    url: str
+
+class FinancialMetrics(BaseModel):
+    revenue: float
+    gross_margin: float
+    net_income: float
+
+def extract_text_from_pdf(pdf_file: bytes) -> str:
+    """Extract text from PDF bytes."""
+    try:
+        pdf_reader = PyPDF2.PdfReader(BytesIO(pdf_file))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+        return text
+    except Exception as e:
+        logging.error(f"Error extracting PDF text: {e}")
+        raise HTTPException(status_code=400, detail="Error processing PDF file")
+
+def extract_financial_metrics(text: str) -> FinancialMetrics:
+    """Extract key financial metrics from text."""
+    metrics = {
+        "revenue": 0.0,
+        "gross_margin": 0.0,
+        "net_income": 0.0
+    }
+    
+    patterns = {
+        "revenue": r"revenue.*?\$?([\d,]+(?:\.\d+)?)\s*(?:million|billion)?",
+        "gross_margin": r"gross margin.*?([\d,]+(?:\.\d+)?)\s*%",
+        "net_income": r"net income.*?\$?([\d,]+(?:\.\d+)?)\s*(?:million|billion)?"
+    }
+    
+    for metric, pattern in patterns.items():
+        matches = re.finditer(pattern, text.lower())
+        for match in matches:
+            try:
+                value = float(match.group(1).replace(',', ''))
+                if "billion" in match.group(0).lower():
+                    value *= 1000
+                metrics[metric] = value
+            except (ValueError, IndexError):
+                continue
+    
+    return FinancialMetrics(**metrics)
+
+def generate_summary(text: str) -> str:
+    """Generate a summary of the text using BART."""
+    try:
+        max_chunk_length = 1024
+        chunks = [text[i:i + max_chunk_length] for i in range(0, len(text), max_chunk_length)]
         
-    async def fetch_pdf(self, url: str, company_name: str):
-        """Fetch PDF from URL and extract text"""
+        summaries = []
+        for chunk in chunks:
+            summary = summarizer(chunk, max_length=130, min_length=30, do_sample=False)
+            summaries.append(summary[0]['summary_text'])
+        
+        return " ".join(summaries)
+    except Exception as e:
+        logging.error(f"Error generating summary: {e}")
+        return ""
+
+def analyze_sentiment(text: str) -> Dict[str, float]:
+    """Analyze sentiment and key phrases in the text using TextBlob."""
+    blob = TextBlob(text)
+    sentiment_score = blob.sentiment.polarity
+    confidence = abs(sentiment_score)
+    
+    return {
+        "sentiment_score": sentiment_score,
+        "confidence": min(confidence, 1.0)
+    }
+
+@app.post("/api/analyze-reports")
+async def analyze_reports(files: List[UploadFile] = File(...)) -> Dict:
+    """Analyze multiple PDF reports and return comparative analysis."""
+    results = {}
+    
+    for file in files:
         try:
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
+            content = await file.read()
+            text = extract_text_from_pdf(content)
+            metrics = extract_financial_metrics(text)
+            summary = generate_summary(text)
+            sentiment = analyze_sentiment(text)
             
-            # Read PDF content
-            pdf_file = io.BytesIO(response.content)
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
-            
-            text_content = ""
-            for page in pdf_reader.pages:
-                text_content += page.extract_text()
-                
-            # Store raw text
-            self.reports_data[company_name] = {
-                'raw_text': text_content,
-                'metrics': self.extract_financial_metrics(text_content)
+            results[file.filename] = {
+                "metrics": metrics.model_dump(),
+                "summary": summary,
+                "sentiment": sentiment
             }
-            
-            return {"status": "success", "message": f"Successfully processed {company_name} report"}
             
         except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            logging.error(f"Error processing {file.filename}: {e}")
+            raise HTTPException(status_code=400, detail=f"Error processing {file.filename}")
     
-    def extract_financial_metrics(self, text: str) -> Dict:
-        """Extract key financial metrics from text using regex patterns"""
-        metrics = {
-            'revenue': None,
-            'gross_margin': None,
-            'net_income': None,
-            'ebitda': None,
-            'eps': None
-        }
-        
-        # Regular expressions for common financial metrics
-        patterns = {
-            'revenue': r'revenue.*?\$?\s*([\d,]+\.?\d*)\s*million',
-            'gross_margin': r'gross margin.*?([\d.]+)%',
-            'net_income': r'net (income|loss).*?\$?\s*([-\d,]+\.?\d*)\s*million',
-            'ebitda': r'ebitda.*?\$?\s*([\d,]+\.?\d*)\s*million',
-            'eps': r'earnings per share.*?\$?\s*([-\d.]+)'
-        }
-        
-        for metric, pattern in patterns.items():
-            match = re.search(pattern, text.lower())
-            if match:
-                value = match.group(1)
-                try:
-                    metrics[metric] = float(value.replace(',', ''))
-                except ValueError:
-                    continue
-                    
-        return metrics
-    
-    def generate_comparative_analysis(self) -> Dict:
-        """Generate comparative analysis of all processed reports"""
-        comparison = {
-            'companies': list(self.reports_data.keys()),
-            'metrics': {}
-        }
-        
-        for metric in ['revenue', 'gross_margin', 'net_income', 'ebitda', 'eps']:
-            comparison['metrics'][metric] = {
-                company: data['metrics'][metric]
-                for company, data in self.reports_data.items()
-                if data['metrics'][metric] is not None
-            }
-            
-        return comparison
-
-# FastAPI app
-app = FastAPI()
-analyzer = FinancialReportAnalyzer()
-
-@app.post("/analyze-reports")
-async def analyze_reports(reports: List[Dict[str, str]]):
-    """
-    Process multiple financial reports from different URLs
-    reports: List of dicts containing company_name and url
-    """
-    results = []
-    for report in reports:
-        result = await analyzer.fetch_pdf(report['url'], report['company_name'])
-        results.append(result)
-    
-    comparative_analysis = analyzer.generate_comparative_analysis()
-    return {
-        "results": results,
-        "comparative_analysis": comparative_analysis
+    comparative_analysis = {
+        "metrics": {
+            "revenue": {k: v["metrics"]["revenue"] for k, v in results.items()},
+            "gross_margin": {k: v["metrics"]["gross_margin"] for k, v in results.items()},
+            "net_income": {k: v["metrics"]["net_income"] for k, v in results.items()}
+        },
+        "summaries": {k: v["summary"] for k, v in results.items()},
+        "sentiment_analysis": {k: v["sentiment"] for k, v in results.items()}
     }
+    
+    return {
+        "comparative_analysis": comparative_analysis,
+        "individual_results": results
+    }
+
+# Add CORS middleware
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
