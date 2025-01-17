@@ -100,13 +100,17 @@ async def analyze_reports(files: List[UploadFile] = File(...)) -> Dict:
     
     for file in files:
         try:
+            # Extract company name from filename (assuming format: company_originalname.pdf)
+            company_name = file.filename.split('_')[0]
+            
             content = await file.read()
             text = extract_text_from_pdf(content)
             metrics = extract_financial_metrics(text)
             summary = generate_summary(text)
             sentiment = analyze_sentiment(text)
             
-            results[file.filename] = {
+            # Use company name instead of filename as key
+            results[company_name] = {
                 "metrics": metrics.model_dump(),
                 "summary": summary,
                 "sentiment": sentiment
@@ -115,21 +119,6 @@ async def analyze_reports(files: List[UploadFile] = File(...)) -> Dict:
         except Exception as e:
             logging.error(f"Error processing {file.filename}: {e}")
             raise HTTPException(status_code=400, detail=f"Error processing {file.filename}")
-    
-    comparative_analysis = {
-        "metrics": {
-            "revenue": {k: v["metrics"]["revenue"] for k, v in results.items()},
-            "gross_margin": {k: v["metrics"]["gross_margin"] for k, v in results.items()},
-            "net_income": {k: v["metrics"]["net_income"] for k, v in results.items()}
-        },
-        "summaries": {k: v["summary"] for k, v in results.items()},
-        "sentiment_analysis": {k: v["sentiment"] for k, v in results.items()}
-    }
-    
-    return {
-        "comparative_analysis": comparative_analysis,
-        "individual_results": results
-    }
 
 # Add CORS middleware
 from fastapi.middleware.cors import CORSMiddleware

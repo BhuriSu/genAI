@@ -22,6 +22,7 @@ const MultiCompanyDashboard: React.FC = () => {
   const [urls, setUrls] = useState<UrlInput[]>([{ company: '', file: null }]);
   const [loading, setLoading] = useState<boolean>(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleAddUrl = () => {
     setUrls([...urls, { company: '', file: null }]);
@@ -40,19 +41,35 @@ const MultiCompanyDashboard: React.FC = () => {
   const handleAnalyze = async () => {
     setLoading(true);
     const formData = new FormData();
-
-    urls.forEach((entry, index) => {
-      if (entry.company && entry.file) {
-        formData.append(`files[${index}][company]`, entry.company);
-        formData.append(`files[${index}][file]`, entry.file);
+  
+    // Filter out any entries without both company and file
+    const validFiles = urls.filter(entry => entry.company && entry.file);
+  
+    if (validFiles.length === 0) {
+      console.error('No valid files to analyze');
+      setLoading(false);
+      return;
+    }
+  
+    // Append each file to formData
+    validFiles.forEach((entry) => {
+      if (entry.file) {  // TypeScript null check
+        // The key must be "files" as an array
+        formData.append("files", entry.file);
       }
     });
-
+  
     try {
-      const response = await fetch('/api/analyze-reports', {
+      const response = await fetch('http://localhost:8000/api/analyze-reports', {
         method: 'POST',
         body: formData,
       });
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      }
+  
       const data = await response.json();
       setAnalysisData(data.comparative_analysis);
     } catch (error) {
@@ -94,18 +111,23 @@ const MultiCompanyDashboard: React.FC = () => {
               <Plus size={20} /> Add Another Company
             </button>
             <button
-              onClick={handleAnalyze}
-              disabled={loading}
-              className="w-full p-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <Loader2 className="animate-spin" /> Analyzing Reports...
-                </span>
-              ) : (
-                'Analyze Reports'
-              )}
-            </button>
+            onClick={handleAnalyze}
+            disabled={loading || !urls.some(url => url.company && url.file)}
+            className="w-full p-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300"
+             >
+         {loading ? (
+           <span className="flex items-center justify-center gap-2">
+           <Loader2 className="animate-spin" /> Analyzing Reports...
+           </span>
+         ) : (
+         'Analyze Reports'
+         )}
+         </button>
+        {error && (
+        <div className="text-red-500 mt-2">
+        {error}
+        </div>
+         )}
           </div>
         </CardContent>
       </Card>
