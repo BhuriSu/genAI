@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import Plot from 'react-plotly.js'; // Import Plotly for React
 import { Plus, Loader2 } from 'lucide-react';
 
 interface FileInput {
@@ -15,6 +15,7 @@ interface Metrics {
 
 interface AnalysisData {
   metrics: Metrics;
+  visualizations: Record<string, any>; // Plotly JSON data
 }
 
 const MultiCompanyDashboard: React.FC = () => {
@@ -37,39 +38,37 @@ const MultiCompanyDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     const formData = new FormData();
-  
+
     const validFiles = files.filter(entry => entry.file);
-  
+
     if (validFiles.length === 0) {
       setError('Please select at least one file to analyze');
       setLoading(false);
       return;
     }
-  
+
     validFiles.forEach((entry) => {
       if (entry.file) {
         formData.append("files", entry.file);
       }
     });
-  
+
     try {
       const response = await fetch('http://localhost:8000/api/analyze-reports', {
         method: 'POST',
-        // Remove credentials if not needed
-        // credentials: 'include',
         headers: {
           'Accept': 'application/json',
         },
         body: formData,
       });
-  
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
-  
+
       const data = await response.json();
-      setAnalysisData(data.comparative_analysis);
+      setAnalysisData(data); // Set both metrics and visualizations
     } catch (error) {
       console.error('Error analyzing reports:', error);
       setError(error instanceof Error ? error.message : 'An error occurred while analyzing reports');
@@ -132,22 +131,12 @@ const MultiCompanyDashboard: React.FC = () => {
               <CardTitle>Revenue Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={Object.entries(analysisData.metrics.revenue).map(([file, value]) => ({
-                      file: `File ${file}`,
-                      revenue: value,
-                    }))}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="file" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="revenue" fill="#3b82f6" name="Revenue ($M)" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-96">
+                <Plot
+                  data={analysisData.visualizations.revenue.data}
+                  layout={analysisData.visualizations.revenue.layout}
+                  config={{ responsive: true }}
+                />
               </div>
             </CardContent>
           </Card>
@@ -158,22 +147,12 @@ const MultiCompanyDashboard: React.FC = () => {
               <CardTitle>Gross Margin Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={Object.entries(analysisData.metrics.gross_margin).map(([file, value]) => ({
-                      file: `File ${file}`,
-                      margin: value,
-                    }))}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="file" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="margin" fill="#22c55e" name="Gross Margin (%)" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-96">
+                <Plot
+                  data={analysisData.visualizations.gross_margin.data}
+                  layout={analysisData.visualizations.gross_margin.layout}
+                  config={{ responsive: true }}
+                />
               </div>
             </CardContent>
           </Card>
@@ -184,22 +163,12 @@ const MultiCompanyDashboard: React.FC = () => {
               <CardTitle>Net Income Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={Object.entries(analysisData.metrics.net_income).map(([file, value]) => ({
-                      file: `File ${file}`,
-                      income: value,
-                    }))}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="file" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="income" fill="#ef4444" name="Net Income ($M)" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-96">
+                <Plot
+                  data={analysisData.visualizations.net_income.data}
+                  layout={analysisData.visualizations.net_income.layout}
+                  config={{ responsive: true }}
+                />
               </div>
             </CardContent>
           </Card>
