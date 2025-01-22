@@ -1,29 +1,43 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
-import Plot from 'react-plotly.js'; // Import Plotly for React
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, FileText, Image } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
+// Types
 interface FileInput {
   file: File | null;
 }
 
-interface Metrics {
+interface FinancialMetrics {
   revenue: Record<string, number>;
   gross_margin: Record<string, number>;
   net_income: Record<string, number>;
 }
 
 interface AnalysisData {
-  metrics: Metrics;
-  visualizations: Record<string, any>; // Plotly JSON data
+  metrics: FinancialMetrics;
+  summary: string;
+  trends: string[];
+  recommendations: string[];
 }
 
-const MultiCompanyDashboard: React.FC = () => {
+interface GeneratedContent {
+  text?: string;
+  imageUrl?: string;
+}
+
+const MultiServiceDashboard = () => {
+  // State management
   const [files, setFiles] = useState<FileInput[]>([{ file: null }]);
   const [loading, setLoading] = useState<boolean>(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'financial' | 'content'>('financial');
+  const [prompt, setPrompt] = useState<string>('');
+  const [generationType, setGenerationType] = useState<'text' | 'image'>('text');
+  const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
 
+  // Handlers for financial analysis
   const handleAddFile = () => {
     setFiles([...files, { file: null }]);
   };
@@ -40,7 +54,6 @@ const MultiCompanyDashboard: React.FC = () => {
     const formData = new FormData();
 
     const validFiles = files.filter(entry => entry.file);
-
     if (validFiles.length === 0) {
       setError('Please select at least one file to analyze');
       setLoading(false);
@@ -56,22 +69,41 @@ const MultiCompanyDashboard: React.FC = () => {
     try {
       const response = await fetch('http://localhost:8000/api/analyze-reports', {
         method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-        },
         body: formData,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
-
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
-      setAnalysisData(data); // Set both metrics and visualizations
+      setAnalysisData(data);
     } catch (error) {
-      console.error('Error analyzing reports:', error);
-      setError(error instanceof Error ? error.message : 'An error occurred while analyzing reports');
+      setError(error instanceof Error ? error.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handler for content generation
+  const handleGenerate = async () => {
+    if (!prompt) {
+      setError('Please enter a prompt');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, type: generationType }),
+      });
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      setGeneratedContent(data);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -79,103 +111,210 @@ const MultiCompanyDashboard: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Financial Reports Analyzer</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {files.map((file, index) => (
-              <div key={index} className="flex gap-4 items-center">
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  className="w-full p-2 border rounded"
-                  onChange={(e) => handleFileChange(index, e.target.files?.[0] || null)}
-                />
-              </div>
-            ))}
-            <button
-              onClick={handleAddFile}
-              className="flex items-center gap-2 p-2 text-blue-600 hover:text-blue-800"
-            >
-              <Plus size={20} /> Add Another File
-            </button>
-            <button
-              onClick={handleAnalyze}
-              disabled={loading || !files.some(f => f.file)}
-              className="w-full p-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <Loader2 className="animate-spin" /> Analyzing Reports...
-                </span>
-              ) : (
-                'Analyze Reports'
-              )}
-            </button>
-            {error && (
-              <div className="text-red-500 mt-2">
-                {error}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Service Selection Tabs */}
+      <div className="flex space-x-4 border-b">
+        <button
+          className={`pb-2 px-4 ${activeTab === 'financial' ? 'border-b-2 border-blue-600 text-blue-600' : ''}`}
+          onClick={() => setActiveTab('financial')}
+        >
+          Financial Analysis
+        </button>
+        <button
+          className={`pb-2 px-4 ${activeTab === 'content' ? 'border-b-2 border-blue-600 text-blue-600' : ''}`}
+          onClick={() => setActiveTab('content')}
+        >
+          Content Generation
+        </button>
+      </div>
 
-      {analysisData && (
+      {/* Financial Analysis Section */}
+      {activeTab === 'financial' && (
         <div className="space-y-6">
-          {/* Revenue Chart */}
           <Card>
             <CardHeader>
-              <CardTitle>Revenue Analysis</CardTitle>
+              <CardTitle>Financial Reports Analyzer</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-96">
-                <Plot
-                  data={analysisData.visualizations.revenue.data}
-                  layout={analysisData.visualizations.revenue.layout}
-                  config={{ responsive: true }}
-                />
+              <div className="space-y-4">
+                {files.map((file, index) => (
+                  <div key={index} className="flex gap-4 items-center">
+                    <input
+                      type="file"
+                      accept="application/pdf,.csv,.xlsx"
+                      className="w-full p-2 border rounded"
+                      onChange={(e) => handleFileChange(index, e.target.files?.[0] || null)}
+                    />
+                  </div>
+                ))}
+                <button
+                  onClick={handleAddFile}
+                  className="flex items-center gap-2 p-2 text-blue-600 hover:text-blue-800"
+                >
+                  <Plus size={20} /> Add Another File
+                </button>
+                <button
+                  onClick={handleAnalyze}
+                  disabled={loading || !files.some(f => f.file)}
+                  className="w-full p-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="animate-spin" /> Analyzing...
+                    </span>
+                  ) : (
+                    'Analyze Reports'
+                  )}
+                </button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Gross Margin Chart */}
+          {analysisData && (
+            <>
+              {/* Financial Metrics */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Key Metrics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-96">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={Object.entries(analysisData.metrics.revenue).map(([date, value]) => ({
+                        date,
+                        revenue: value,
+                        grossMargin: analysisData.metrics.gross_margin[date],
+                        netIncome: analysisData.metrics.net_income[date]
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="revenue" stroke="#8884d8" />
+                        <Line type="monotone" dataKey="grossMargin" stroke="#82ca9d" />
+                        <Line type="monotone" dataKey="netIncome" stroke="#ffc658" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Analysis Summary */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Analysis Summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <p className="text-gray-700">{analysisData.summary}</p>
+                    <div>
+                      <h4 className="font-semibold mb-2">Key Trends</h4>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {analysisData.trends.map((trend, index) => (
+                          <li key={index}>{trend}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold mb-2">Recommendations</h4>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {analysisData.recommendations.map((rec, index) => (
+                          <li key={index}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Content Generation Section */}
+      {activeTab === 'content' && (
+        <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Gross Margin Analysis</CardTitle>
+              <CardTitle>Content Generator</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-96">
-                <Plot
-                  data={analysisData.visualizations.gross_margin.data}
-                  layout={analysisData.visualizations.gross_margin.layout}
-                  config={{ responsive: true }}
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setGenerationType('text')}
+                    className={`flex items-center gap-2 p-2 rounded ${
+                      generationType === 'text' ? 'bg-blue-600 text-white' : 'bg-gray-100'
+                    }`}
+                  >
+                    <FileText size={20} /> Text
+                  </button>
+                  <button
+                    onClick={() => setGenerationType('image')}
+                    className={`flex items-center gap-2 p-2 rounded ${
+                      generationType === 'image' ? 'bg-blue-600 text-white' : 'bg-gray-100'
+                    }`}
+                  >
+                    <Image size={20} /> Image
+                  </button>
+                </div>
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder={`Enter your ${generationType} generation prompt...`}
+                  className="w-full p-2 border rounded h-32"
                 />
+                <button
+                  onClick={handleGenerate}
+                  disabled={loading || !prompt}
+                  className="w-full p-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="animate-spin" /> Generating...
+                    </span>
+                  ) : (
+                    'Generate Content'
+                  )}
+                </button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Net Income Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Net Income Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-96">
-                <Plot
-                  data={analysisData.visualizations.net_income.data}
-                  layout={analysisData.visualizations.net_income.layout}
-                  config={{ responsive: true }}
-                />
-              </div>
-            </CardContent>
-          </Card>
+          {/* Generated Content Display */}
+          {generatedContent && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Generated Content</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {generationType === 'text' && generatedContent.text && (
+                  <div className="prose max-w-none">
+                    {generatedContent.text}
+                  </div>
+                )}
+                {generationType === 'image' && generatedContent.imageUrl && (
+                  <div className="flex justify-center">
+                    <img
+                      src={generatedContent.imageUrl}
+                      alt="Generated content"
+                      className="max-w-full h-auto rounded-lg shadow-lg"
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div className="text-red-500 mt-2">
+          {error}
         </div>
       )}
     </div>
   );
 };
 
-export default MultiCompanyDashboard;
+export default MultiServiceDashboard;
