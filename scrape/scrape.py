@@ -297,3 +297,9 @@ class Fortune500Scraper:
             self.logger.error(f"Error in scraper: {str(e)}")
             raise
 
+class DatabaseManager:
+    def __init__(self):
+        pass
+    
+    def save_company_data(self, data):
+        print(f"Saving data: {data}")
