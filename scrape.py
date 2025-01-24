@@ -1,27 +1,22 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 import requests
-import pandas as pd
-import PyPDF2
 import io
 import logging
-import time
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from concurrent.futures import ThreadPoolExecutor
 import re
 import os
 from datetime import datetime
 import json
-from urllib.parse import urljoin
 import fitz  # PyMuPDF for better PDF handling
 from fake_useragent import UserAgent
 import aiohttp
 import asyncio
-from database import DatabaseManager
+from database.database import DatabaseManager
 
 class Fortune500Scraper:
     def __init__(self, output_dir: str = "financial_data"):
