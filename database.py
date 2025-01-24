@@ -2,8 +2,10 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
-from datetime import datetime
+from datetime import datetime, timezone
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 Base = declarative_base()
 
@@ -15,8 +17,8 @@ class Company(Base):
     name = Column(String(255), unique=True)
     website = Column(String(255))
     revenue = Column(Float)
-    created_at = Column(DateTime, default=datetime.now(datetime.timezone.utc))
-    updated_at = Column(DateTime, default=datetime.now(datetime.timezone.utc), onupdate=datetime.now(datetime.timezone.utc))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     
     financials = relationship("Financial", back_populates="company")
 
@@ -33,7 +35,7 @@ class Financial(Base):
     source = Column(String(50))  # 'pdf' or 'web'
     data_date = Column(DateTime)
     raw_data = Column(JSONB)
-    created_at = Column(DateTime, default=datetime.now(datetime.timezone.utc))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
     
     company = relationship("Company", back_populates="financials")
 
@@ -46,11 +48,11 @@ class DatabaseManager:
     def setup_database(self):
         """Set up database connection using environment variables."""
         db_params = {
-            'host': os.getenv('DB_HOST', 'localhost'),
-            'port': os.getenv('DB_PORT', '5432'),
-            'database': os.getenv('DB_NAME', 'fortune500_db'),
-            'user': os.getenv('DB_USER', 'postgres'),
-            'password': os.getenv('DB_PASSWORD', 'postgres')
+    'host': os.getenv('DB_HOST'),
+    'port': os.getenv('DB_PORT'),
+    'database': os.getenv('DB_NAME'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD') 
         }
         
         db_url = f"postgresql://{db_params['user']}:{db_params['password']}@{db_params['host']}:{db_params['port']}/{db_params['database']}"
@@ -84,7 +86,7 @@ class DatabaseManager:
                     total_assets=company_data['metrics'].get('total_assets'),
                     total_liabilities=company_data['metrics'].get('total_liabilities'),
                     source=company_data.get('source', 'web'),
-                    data_date=datetime.now(),
+                    data_date=datetime.now(timezone.utc),
                     raw_data=company_data
                 )
                 session.add(financial)
