@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
-import { Plus, Loader2, FileText, Image } from 'lucide-react';
+import { Plus, Loader2, FileText, Image, Box } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // Types
@@ -24,6 +24,8 @@ interface AnalysisData {
 interface GeneratedContent {
   text?: string;
   imageUrl?: string;
+  content2D?: string; 
+  content3D?: string;
 }
 
 const MultiServiceDashboard = () => {
@@ -34,7 +36,7 @@ const MultiServiceDashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'financial' | 'content'>('financial');
   const [prompt, setPrompt] = useState<string>('');
-  const [generationType, setGenerationType] = useState<'text' | 'image'>('text');
+  const [generationType, setGenerationType] = useState<'text' | 'image' | 'text2D' | 'text3D' | 'image3D'>('text');
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
 
   // Handlers for financial analysis
@@ -231,8 +233,8 @@ const MultiServiceDashboard = () => {
         </div>
       )}
 
-      {/* Content Generation Section */}
-      {activeTab === 'content' && (
+        {/* Content Generation Section */}
+        {activeTab === 'content' && (
         <div className="space-y-6">
           <Card>
             <CardHeader>
@@ -250,12 +252,36 @@ const MultiServiceDashboard = () => {
                     <FileText size={20} /> Text
                   </button>
                   <button
+                    onClick={() => setGenerationType('text2D')}
+                    className={`flex items-center gap-2 p-2 rounded ${
+                      generationType === 'text2D' ? 'bg-blue-600 text-white' : 'bg-gray-100'
+                    }`}
+                  >
+                    <Image size={20} /> Text to 2D
+                  </button>
+                  <button
+                    onClick={() => setGenerationType('text3D')}
+                    className={`flex items-center gap-2 p-2 rounded ${
+                      generationType === 'text3D' ? 'bg-blue-600 text-white' : 'bg-gray-100'
+                    }`}
+                  >
+                    <Box size={20} /> Text to 3D
+                  </button>
+                  <button
                     onClick={() => setGenerationType('image')}
                     className={`flex items-center gap-2 p-2 rounded ${
                       generationType === 'image' ? 'bg-blue-600 text-white' : 'bg-gray-100'
                     }`}
                   >
-                    <Image size={20} /> Image
+                  <Image size={20} /> Image
+                  </button>
+                  <button
+                    onClick={() => setGenerationType('image3D')}
+                    className={`flex items-center gap-2 p-2 rounded ${
+                      generationType === 'image3D' ? 'bg-blue-600 text-white' : 'bg-gray-100'
+                    }`}
+                  >
+                    <Box size={20} /> Image to 3D
                   </button>
                 </div>
                 <textarea
@@ -298,6 +324,25 @@ const MultiServiceDashboard = () => {
                     <img
                       src={generatedContent.imageUrl}
                       alt="Generated content"
+                      className="max-w-full h-auto rounded-lg shadow-lg"
+                    />
+                  </div>
+                )}
+                {generationType === 'text2D' && generatedContent.content2D && (
+                  <div className="prose max-w-none">
+                    {generatedContent.content2D}
+                  </div>
+                )}
+                {generationType === 'text3D' && generatedContent.content3D && (
+                  <div className="prose max-w-none">
+                    {generatedContent.content3D}
+                  </div>
+                )}
+                {generationType === 'image3D' && generatedContent.imageUrl && (
+                  <div className="flex justify-center">
+                    <img
+                      src={generatedContent.imageUrl}
+                      alt="Generated 3D content"
                       className="max-w-full h-auto rounded-lg shadow-lg"
                     />
                   </div>

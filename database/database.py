@@ -1,6 +1,5 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import URL
 from datetime import datetime, timezone
