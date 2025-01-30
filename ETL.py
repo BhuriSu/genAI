@@ -1,9 +1,8 @@
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -12,11 +11,16 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 import os
 from dotenv import load_dotenv
+import time
+import json
 
 # Load environment variables
 load_dotenv()
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Database configuration
@@ -37,10 +41,14 @@ Base = declarative_base()
 
 class FinancialReport(Base):
     __tablename__ = 'financial_reports'
-    
+    # cik number is used on the SEC's computer systems to identify corporations and individual people who have filed disclosure with the SEC.
     id = Column(Integer, primary_key=True)
+    cik = Column(String)  
     company_name = Column(String)
-    report_date = Column(DateTime)
+    filing_type = Column(String)  # Added filing type (10-K, 10-Q)
+    filing_date = Column(DateTime)
+    fiscal_year = Column(Integer)
+    fiscal_period = Column(String)
     revenue = Column(Float)
     net_income = Column(Float)
     total_assets = Column(Float)
@@ -49,43 +57,210 @@ class FinancialReport(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 # Web Scraping Component
-class FinancialScraper:
-    def __init__(self, companies):
-        self.companies = companies
+class SECEdgarScraper:
+    def __init__(self):
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'azoro shonuvy@email.com',  # Replace with your details
+            'Accept-Encoding': 'gzip, deflate'
         }
+        self.base_url = "https://www.sec.gov/files/company_tickers.json"
     
-    def scrape_company(self, company):
+    def get_fortune500_ciks(self):
+        """Get CIK numbers for Fortune 500 companies"""
         try:
-            # This is a placeholder for the actual scraping logic
-            # You would need to implement specific scraping rules for each source
-            url = f"https://example.com/financials/{company}"
-            response = requests.get(url, headers=self.headers)
-            soup = BeautifulSoup(response.content, 'html.parser')
+            logger.info("Fetching company CIKs from SEC EDGAR...")
             
-            # Extract financial data (implement based on actual HTML structure)
-            data = {
-                'company_name': company,
-                'report_date': datetime.now(),  # Replace with actual report date
-                'revenue': self._extract_value(soup, 'revenue'),
-                'net_income': self._extract_value(soup, 'net_income'),
-                'total_assets': self._extract_value(soup, 'total_assets'),
-                'total_liabilities': self._extract_value(soup, 'total_liabilities'),
-                'operating_cash_flow': self._extract_value(soup, 'operating_cash_flow')
+            # Use requests Session for better performance
+            session = requests.Session()
+            session.headers.update(self.headers)
+            
+            # First, get the list of all companies
+            response = session.get(self.base_url)
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch CIKs. Status code: {response.status_code}")
+                logger.error(f"Response content: {response.text[:200]}...")
+                raise requests.exceptions.RequestException(
+                    f"Failed to fetch CIKs. Status code: {response.status_code}"
+                )
+            
+            # Parse the JSON response
+            companies_data = response.json()
+            
+            # Sort companies by market cap or another metric if available
+            companies_list = []
+            for _, company in companies_data.items():
+                companies_list.append({
+                    'cik_str': str(company['cik_str']).zfill(10),
+                    'ticker': company['ticker'],
+                    'title': company['title']
+                })
+            
+            # Take the first 500 companies
+            ciks = [company['cik_str'] for company in companies_list[:500]]
+            
+            logger.info(f"Successfully retrieved {len(ciks)} CIKs")
+            
+            # Log some sample companies for verification
+            for i in range(min(5, len(companies_list))):
+                logger.info(f"Sample company {i+1}: {companies_list[i]['title']} (CIK: {companies_list[i]['cik_str']})")
+            
+            return ciks
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error while fetching CIKs: {str(e)}")
+            raise
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing error: {str(e)}")
+            logger.error(f"Response content: {response.text[:200]}...")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error while fetching CIKs: {str(e)}")
+            raise
+
+    def get_company_submissions(self, cik):
+        """Get company's filing history"""
+        try:
+            url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+            
+            # Add delay to comply with SEC EDGAR rate limits
+            time.sleep(0.1)  # 100ms delay between requests
+            
+            response = requests.get(url, headers=self.headers)
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Failed to fetch submissions for CIK {cik}. Status code: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error fetching submissions for CIK {cik}: {str(e)}")
+            return None
+
+    def get_filing_data(self, accession_number, cik):
+        """Get XBRL data from a specific filing"""
+        try:
+            # Add delay to comply with SEC EDGAR rate limits
+            time.sleep(0.1)  # 100ms delay between requests
+            
+            # Get the filing's directory listing
+            url = f"https://data.sec.gov/Archives/edgar/data/{int(cik)}/{accession_number}/index.json"
+            response = requests.get(url, headers=self.headers)
+            
+            if response.status_code != 200:
+                logger.warning(f"Failed to fetch filing data for CIK {cik}. Status code: {response.status_code}")
+                return None
+
+            # Find the XBRL file
+            files = response.json()['directory']['item']
+            xbrl_file = next((f for f in files if f['name'].endswith('.xml')), None)
+            
+            if not xbrl_file:
+                logger.warning(f"No XBRL file found for CIK {cik}")
+                return None
+
+            # Get XBRL content
+            xbrl_url = f"https://data.sec.gov/Archives/edgar/data/{int(cik)}/{accession_number}/{xbrl_file['name']}"
+            response = requests.get(xbrl_url, headers=self.headers)
+            
+            return self._parse_xbrl(response.content)
+            
+        except Exception as e:
+            logger.error(f"Error getting filing data for CIK {cik}: {str(e)}")
+            return None
+
+    def _parse_xbrl(self, content):
+        """Parse XBRL content for financial metrics"""
+        try:
+            root = ET.fromstring(content)
+            
+            # Define XBRL tags mapping
+            tags = {
+                'revenue': [
+                    './/us-gaap:Revenues',
+                    './/us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax'
+                ],
+                'net_income': [
+                    './/us-gaap:NetIncomeLoss',
+                    './/us-gaap:ProfitLoss'
+                ],
+                'total_assets': [
+                    './/us-gaap:Assets',
+                    './/us-gaap:AssetsCurrent'
+                ],
+                'total_liabilities': [
+                    './/us-gaap:Liabilities',
+                    './/us-gaap:LiabilitiesCurrent'
+                ],
+                'operating_cash_flow': [
+                    './/us-gaap:NetCashProvidedByUsedInOperatingActivities'
+                ]
             }
+            
+            data = {}
+            for metric, possible_tags in tags.items():
+                for tag in possible_tags:
+                    element = root.find(tag)
+                    if element is not None:
+                        try:
+                            data[metric] = float(element.text)
+                            break
+                        except (ValueError, TypeError):
+                            continue
+                
+                if metric not in data:
+                    data[metric] = None
+                    
             return data
         except Exception as e:
-            logger.error(f"Error scraping {company}: {str(e)}")
+            logger.error(f"Error parsing XBRL: {str(e)}")
             return None
-    
-    def _extract_value(self, soup, field):
-        # Implement specific extraction logic based on the website structure
-        return 0.0  # Placeholder
-    
+
+    def scrape_company(self, cik):
+        """Scrape latest financial data for a company"""
+        try:
+            submissions = self.get_company_submissions(cik)
+            if not submissions:
+                return None
+
+            # Get latest 10-K filing
+            recent_filings = submissions.get('filings', {}).get('recent', {})
+            if not recent_filings:
+                return None
+
+            # Find index of latest 10-K
+            form_index = next((i for i, form in enumerate(recent_filings['form']) 
+                             if form == '10-K'), None)
+            if form_index is None:
+                return None
+
+            accession_number = recent_filings['accessionNumber'][form_index]
+            filing_date = recent_filings['filingDate'][form_index]
+            
+            financial_data = self.get_filing_data(accession_number, cik)
+            if not financial_data:
+                return None
+
+            return {
+                'cik': cik,
+                'company_name': submissions['name'],
+                'filing_type': '10-K',
+                'filing_date': datetime.strptime(filing_date, '%Y-%m-%d'),
+                'fiscal_year': int(filing_date[:4]),
+                'fiscal_period': 'FY',
+                **financial_data
+            }
+
+        except Exception as e:
+            logger.error(f"Error scraping CIK {cik}: {str(e)}")
+            return None
+
     def scrape_all(self):
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            results = list(executor.map(self.scrape_company, self.companies))
+        """Scrape data for all Fortune 500 companies"""
+        ciks = self.get_fortune500_ciks()
+        with ThreadPoolExecutor(max_workers=3) as executor:  # Limited workers due to SEC rate limits
+            results = list(executor.map(self.scrape_company, ciks))
         return [r for r in results if r is not None]
 
 # ETL Component
@@ -148,43 +323,46 @@ class MLDataPreparator:
         )
 
 # Main Pipeline
-def run_pipeline(companies):
-    # Initialize components with secure database connection
-    db_url = get_database_url()
-    
-    # Validate database configuration
-    if not all(DB_CONFIG.values()):
-        raise ValueError("Missing required database configuration. Please check your .env file.")
-    
-    scraper = FinancialScraper(companies)
-    etl = FinancialETL(db_url)
-    ml_prep = MLDataPreparator()
-    
-    # Execute pipeline
-    logger.info("Starting data collection...")
-    raw_data = scraper.scrape_all()
-    
-    logger.info("Transforming data...")
-    transformed_data = etl.transform_data(raw_data)
-    
-    logger.info("Loading data to database...")
-    etl.load_data(transformed_data)
-    
-    logger.info("Preparing data for ML...")
-    ml_ready_data = ml_prep.prepare_data(transformed_data)
-    
-    return ml_ready_data
-
-# Example usage
-if __name__ == "__main__":
-    companies = [
-        "company1",
-        "company2",
-        # Add more companies
-    ]
-    
+def run_pipeline():
     try:
-        ml_ready_data = run_pipeline(companies)
+        # Initialize components
+        db_url = get_database_url()
+        
+        if not all(DB_CONFIG.values()):
+            raise ValueError("Missing database configuration")
+        
+        scraper = SECEdgarScraper()
+        etl = FinancialETL(db_url)
+        
+        logger.info("Starting SEC EDGAR data collection...")
+        raw_data = scraper.scrape_all()
+        
+        if not raw_data:
+            raise ValueError("No data was collected from SEC EDGAR")
+        
+        logger.info(f"Collected data for {len(raw_data)} companies")
+        
+        logger.info("Transforming data...")
+        transformed_data = etl.transform_data(raw_data)
+        
+        logger.info("Loading data to database...")
+        etl.load_data(transformed_data)
+        
+        return transformed_data
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error: {str(e)}")
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parsing error: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Pipeline failed: {str(e)}")
+        raise
+
+if __name__ == "__main__":
+    try:
+        transformed_data = run_pipeline()
         print("Pipeline completed successfully")
     except Exception as e:
         logger.error(f"Pipeline failed: {str(e)}")
