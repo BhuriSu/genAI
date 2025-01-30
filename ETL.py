@@ -1,11 +1,9 @@
 import pandas as pd
 import requests
-import xml.etree.ElementTree as ET
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
 from datetime import datetime, timezone
 import logging
-from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer

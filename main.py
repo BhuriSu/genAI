@@ -1,152 +1,128 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Dict
-import pandas as pd
-import io
-import json
+from typing import Optional
+import httpx
+from datetime import datetime
 
 app = FastAPI()
 
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Input models
-class PromptRequest(BaseModel):
+# API Models
+class TextRequest(BaseModel):
     prompt: str
+    parameters: Optional[dict] = None
 
-# Response models
-class AnalysisResponse(BaseModel):
-    metrics: Dict
-    summary: str
-    trends: List[str]
-    recommendations: List[str]
+class AnalyzeReportRequest(BaseModel):
+    report_text: str
+    metrics: Optional[list[str]] = None
 
-class TextResponse(BaseModel):
-    text: str
+# API client configuration
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/generate"
+FLUX_API_URL = "https://api.flux.ai/v1/text2d"
+HUNYUAN_API_URL = "https://api.hunyuan.com/v1"
 
-class ImageResponse(BaseModel):
-    imageUrl: str
 
-class ContentResponse(BaseModel):
-    content: str
 
-# Financial Analysis Endpoint
-@app.post("/api/analyze-reports", response_model=AnalysisResponse)
-async def analyze_reports(files: List[UploadFile] = File(...)):
+async def call_external_api(url: str, headers: dict, payload: dict):
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=500, detail=f"External API error: {str(e)}")
+
+@app.post("/api/generate/text")
+async def generate_text(request: TextRequest):
+    """Generate text using DeepseekR1 model"""
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "prompt": request.prompt,
+        "model": "deepseekr1",
+        **(request.parameters or {})
+    }
+    
+    return await call_external_api(DEEPSEEK_API_URL, headers, payload)
+
+@app.post("/api/generate/text/2D")
+async def generate_text_2d(request: TextRequest):
+    """Generate 2D text using Flux"""
+    headers = {
+        "Authorization": f"Bearer {FLUX_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "prompt": request.prompt,
+        "type": "2d",
+        **(request.parameters or {})
+    }
+    
+    return await call_external_api(FLUX_API_URL, headers, payload)
+
+@app.post("/api/generate/text/3D")
+async def generate_text_3d(request: TextRequest):
+    """Generate 3D text using Hunyuan3D-2"""
+    headers = {
+        "Authorization": f"Bearer {HUNYUAN_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "prompt": request.prompt,
+        "model": "hunyuan3d-2",
+        "mode": "text",
+        **(request.parameters or {})
+    }
+    
+    return await call_external_api(f"{HUNYUAN_API_URL}/generate", headers, payload)
+
+@app.post("/api/generate/image/3D")
+async def generate_image_3d(request: TextRequest):
+    """Generate 3D image using Hunyuan3D-2"""
+    headers = {
+        "Authorization": f"Bearer {HUNYUAN_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "prompt": request.prompt,
+        "model": "hunyuan3d-2",
+        "mode": "image",
+        **(request.parameters or {})
+    }
+    
+    return await call_external_api(f"{HUNYUAN_API_URL}/generate", headers, payload)
+
+@app.post("/api/analyze-reports")
+async def analyze_reports(request: AnalyzeReportRequest):
+    """Custom implementation for report analysis"""
     try:
-        # Initialize metrics dictionary
-        metrics = {
-            "revenue": {},
-            "gross_margin": {},
-            "net_income": {}
+        # Example implementation of report analysis
+        analysis_result = {
+            "timestamp": datetime.now().isoformat(),
+            "word_count": len(request.report_text.split()),
+            "metrics": {}
         }
         
-        for file in files:
-            # Read file content
-            content = await file.read()
-            
-            # Process based on file type
-            if file.filename.endswith('.csv'):
-                df = pd.read_csv(io.StringIO(content.decode('utf-8')))
-            elif file.filename.endswith('.xlsx'):
-                df = pd.read_excel(io.BytesIO(content))
-            else:
-                raise HTTPException(status_code=400, detail="Unsupported file format")
-                
-            # Sample analysis logic (replace with your actual analysis)
-            # This is just an example - you'd want to implement your actual analysis logic
-            metrics["revenue"].update({
-                "2023-Q1": 100000,
-                "2023-Q2": 120000,
-                "2023-Q3": 150000,
-                "2023-Q4": 180000
-            })
-            metrics["gross_margin"].update({
-                "2023-Q1": 70000,
-                "2023-Q2": 85000,
-                "2023-Q3": 100000,
-                "2023-Q4": 120000
-            })
-            metrics["net_income"].update({
-                "2023-Q1": 30000,
-                "2023-Q2": 40000,
-                "2023-Q3": 50000,
-                "2023-Q4": 60000
-            })
-
-        return {
-            "metrics": metrics,
-            "summary": "Financial analysis shows steady growth across all metrics.",
-            "trends": [
-                "Revenue increased by 20% quarter over quarter",
-                "Gross margin maintained at 70%",
-                "Net income showed consistent improvement"
-            ],
-            "recommendations": [
-                "Consider expanding market presence",
-                "Invest in automation to improve margins",
-                "Explore new revenue streams"
-            ]
-        }
+        # Process requested metrics
+        if request.metrics:
+            for metric in request.metrics:
+                if metric == "sentiment":
+                    # Example sentiment analysis (replace with your implementation)
+                    analysis_result["metrics"]["sentiment"] = "positive"
+                elif metric == "key_topics":
+                    # Example topic extraction (replace with your implementation)
+                    analysis_result["metrics"]["key_topics"] = ["topic1", "topic2"]
+                # Add more metric implementations as needed
+        
+        return analysis_result
+    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Text Generation Endpoints
-@app.post("/api/generate/text", response_model=TextResponse)
-async def generate_text(request: PromptRequest):
-    try:
-        # Implement your text generation logic here
-        # This is a placeholder response
-        generated_text = f"Generated text based on prompt: {request.prompt}"
-        return {"text": generated_text}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/generate/text/2D", response_model=ContentResponse)
-async def generate_text_2d(request: PromptRequest):
-    try:
-        # Implement your 2D text generation logic here
-        content = f"2D text content generated from prompt: {request.prompt}"
-        return {"content": content}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/generate/text/3D", response_model=ContentResponse)
-async def generate_text_3d(request: PromptRequest):
-    try:
-        # Implement your 3D text generation logic here
-        content = f"3D text content generated from prompt: {request.prompt}"
-        return {"content": content}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Image Generation Endpoints
-@app.post("/api/generate/image/2D", response_model=ImageResponse)
-async def generate_image_2d(request: PromptRequest):
-    try:
-        # Implement your 2D image generation logic here
-        # This should return a URL to the generated image
-        image_url = f"http://example.com/generated-2d-image.jpg"  # Replace with actual image URL
-        return {"imageUrl": image_url}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/generate/image/3D", response_model=ImageResponse)
-async def generate_image_3d(request: PromptRequest):
-    try:
-        # Implement your 3D image generation logic here
-        # This should return a URL to the generated image
-        image_url = f"http://example.com/generated-3d-image.jpg"  # Replace with actual image URL
-        return {"imageUrl": image_url}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
