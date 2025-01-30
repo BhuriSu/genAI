@@ -36,10 +36,22 @@ const MultiServiceDashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'financial' | 'content'>('financial');
   const [prompt, setPrompt] = useState<string>('');
-  const [generationType, setGenerationType] = useState<'text' | 'image' | 'text2D' | 'text3D' | 'image3D'>('text');
+  const [generationType, setGenerationType] = useState<'text' | 'text2D' | 'text3D' | 'image' | 'image3D'>('text');
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
 
-  // Handlers for financial analysis
+  // Get the appropriate API endpoint based on generation type
+  const getApiEndpoint = (type: string) => {
+    const endpoints = {
+      text: 'http://localhost:8000/api/generate/text',
+      text2D: 'http://localhost:8000/api/generate/text/2D',
+      text3D: 'http://localhost:8000/api/generate/text/3D',
+      image: 'http://localhost:8000/api/generate/image/2D',
+      image3D: 'http://localhost:8000/api/generate/image/3D'
+    };
+    return endpoints[type as keyof typeof endpoints];
+  };
+
+  // Handlers for financial analysis remain the same
   const handleAddFile = () => {
     setFiles([...files, { file: null }]);
   };
@@ -84,7 +96,7 @@ const MultiServiceDashboard = () => {
     }
   };
 
-  // Handler for content generation
+  // Updated generate handler to use the correct endpoint
   const handleGenerate = async () => {
     if (!prompt) {
       setError('Please enter a prompt');
@@ -95,15 +107,29 @@ const MultiServiceDashboard = () => {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/api/generate', {
+      const endpoint = getApiEndpoint(generationType);
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, type: generationType }),
+        body: JSON.stringify({ prompt }),
       });
 
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
-      setGeneratedContent(data);
+      
+      // Process the response based on generation type
+      const newContent: GeneratedContent = {};
+      if (generationType === 'text') {
+        newContent.text = data.text;
+      } else if (generationType.includes('image')) {
+        newContent.imageUrl = data.imageUrl;
+      } else if (generationType === 'text2D') {
+        newContent.content2D = data.content;
+      } else if (generationType === 'text3D') {
+        newContent.content3D = data.content;
+      }
+      
+      setGeneratedContent(newContent);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
