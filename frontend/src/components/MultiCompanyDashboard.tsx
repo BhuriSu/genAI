@@ -45,7 +45,6 @@ const MultiServiceDashboard = () => {
       text: 'http://localhost:8000/api/generate/text',
       text2D: 'http://localhost:8000/api/generate/text/2D',
       text3D: 'http://localhost:8000/api/generate/text/3D',
-      image: 'http://localhost:8000/api/generate/image/2D',
       image3D: 'http://localhost:8000/api/generate/image/3D'
     };
     return endpoints[type as keyof typeof endpoints];
