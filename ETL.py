@@ -11,6 +11,13 @@ import os
 from dotenv import load_dotenv
 import time
 import json
+from pydantic import BaseModel, validator
+from typing import Optional, List
+from sentence_transformers import SentenceTransformer
+from pgvector.sqlalchemy import Vector
+import nltk
+from nltk.tokenize import sent_tokenize
+nltk.download('punkt')
 
 # Load environment variables
 load_dotenv()
@@ -27,15 +34,36 @@ DB_CONFIG = {
     'port': os.getenv('DB_PORT'),
     'database': os.getenv('DB_NAME'),
     'user': os.getenv('DB_USER'),
-    'password': os.getenv('DB_PASSWORD')
+    'password': os.getenv('DB_PASSWORD'),
+    'vector_ext': True
 }
 
 # Construct database URL
 def get_database_url():
     return f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
 
+def setup_database():
+    """Setup database with required extensions"""
+    engine = create_engine(get_database_url())
+    with engine.connect() as conn:
+        # Create pgvector extension if it doesn't exist
+        conn.execute('CREATE EXTENSION IF NOT EXISTS vector;')
+        conn.commit()
 # Database setup
 Base = declarative_base()
+
+class FinancialMetrics(BaseModel):
+    revenue: Optional[float]
+    net_income: Optional[float]
+    total_assets: Optional[float]
+    total_liabilities: Optional[float]
+    operating_cash_flow: Optional[float]
+    
+    @validator('*')
+    def validate_metrics(cls, v):
+        if v is not None and (v > 1e12 or v < -1e12):  # Reasonable range check
+            raise ValueError(f"Metric value {v} seems unrealistic")
+        return v
 
 class FinancialReport(Base):
     __tablename__ = 'financial_reports'
@@ -53,6 +81,34 @@ class FinancialReport(Base):
     total_liabilities = Column(Float)
     operating_cash_flow = Column(Float)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    text_content = Column(String)  # Store processed text
+    embeddings = Column(Vector(384))  # Adjust dimension based on your model
+
+class TextProcessor:
+    def __init__(self):
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    
+    def process_financial_data(self, data):
+        """Convert financial data to text and generate embeddings"""
+        text = self._generate_text(data)
+        embeddings = self.embedding_model.encode(text)
+        return text, embeddings
+    
+    def _generate_text(self, data):
+        """Convert financial metrics to readable text"""
+        text = f"""
+        Financial Report for {data['company_name']} (CIK: {data['cik']})
+        Filing Date: {data['filing_date']}
+        Fiscal Year: {data['fiscal_year']}
+        
+        Key Financial Metrics:
+        - Revenue: ${data['revenue']:,.2f}
+        - Net Income: ${data['net_income']:,.2f}
+        - Total Assets: ${data['total_assets']:,.2f}
+        - Total Liabilities: ${data['total_liabilities']:,.2f}
+        - Operating Cash Flow: ${data['operating_cash_flow']:,.2f}
+        """
+        return text
 
 # Web Scraping Component
 class SECEdgarScraper:
@@ -245,6 +301,7 @@ class FinancialETL:
         self.engine = create_engine(db_url)
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
+        self.text_processor = TextProcessor()
     
     def transform_data(self, raw_data):
         df = pd.DataFrame(raw_data)
@@ -256,19 +313,71 @@ class FinancialETL:
         df['current_ratio'] = df['total_assets'] / df['total_liabilities']
         df['profit_margin'] = df['net_income'] / df['revenue']
         
-        return df
+        processed_data = []
+        for _, row in df.iterrows():
+            text, embeddings = self.text_processor.process_financial_data(row)
+            processed_row = row.to_dict()
+            processed_row['text_content'] = text
+            processed_row['embeddings'] = embeddings
+            processed_data.append(processed_row)
+        
+        return pd.DataFrame(processed_data)
     
     def load_data(self, transformed_data):
         session = self.Session()
         try:
+            # Batch insert for better performance
+            reports = []
             for _, row in transformed_data.iterrows():
-                report = FinancialReport(**row.to_dict())
-                session.add(report)
+                report = FinancialReport(**row)
+                reports.append(report)
+            
+            session.bulk_save_objects(reports)
             session.commit()
-            logger.info("Data successfully loaded to database")
+            logger.info(f"Successfully loaded {len(reports)} reports to database")
         except Exception as e:
             session.rollback()
             logger.error(f"Error loading data: {str(e)}")
+            raise
+        finally:
+            session.close()
+
+    def export_training_data(self, output_dir: str):
+        """Export processed data for model training"""
+        session = self.Session()
+        try:
+            reports = session.query(FinancialReport).all()
+            
+            training_data = []
+            for report in reports:
+                # Prepare training examples for visualization generation
+                training_example = {
+                    "input": report.text_content,
+                    "output": {
+                        "type": "financial_report",
+                        "metrics": {
+                            "revenue": report.revenue,
+                            "net_income": report.net_income,
+                            "total_assets": report.total_assets,
+                            "total_liabilities": report.total_liabilities,
+                            "operating_cash_flow": report.operating_cash_flow,
+                            "current_ratio": report.current_ratio,
+                            "profit_margin": report.profit_margin
+                        }
+                    }
+                }
+                training_data.append(training_example)
+            
+            # Save training data
+            os.makedirs(output_dir, exist_ok=True)
+            with open(os.path.join(output_dir, 'training_data.json'), 'w') as f:
+                json.dump(training_data, f, indent=2)
+            
+            logger.info(f"Exported {len(training_data)} training examples")
+            
+        except Exception as e:
+            logger.error(f"Error exporting training data: {str(e)}")
+            raise
         finally:
             session.close()
 
@@ -298,10 +407,21 @@ class MLDataPreparator:
             index=df.index
         )
 
+class DataValidator:
+    def validate_data(self, data: dict) -> dict:
+        """Validate financial data"""
+        try:
+            metrics = FinancialMetrics(**data)
+            return metrics.dict()
+        except Exception as e:
+            logger.error(f"Data validation error: {str(e)}")
+            raise
+
 # Main Pipeline
 def run_pipeline():
     try:
         # Initialize components
+        setup_database()
         db_url = get_database_url()
         
         if not all(DB_CONFIG.values()):
@@ -309,6 +429,7 @@ def run_pipeline():
         
         scraper = SECEdgarScraper()
         etl = FinancialETL(db_url)
+        validator = DataValidator()
         
         logger.info("Starting SEC EDGAR data collection...")
         raw_data = scraper.scrape_all()
@@ -316,10 +437,20 @@ def run_pipeline():
         if not raw_data:
             raise ValueError("No data was collected from SEC EDGAR")
         
-        logger.info(f"Collected data for {len(raw_data)} companies")
+        # Validate data
+        validated_data = []
+        for item in raw_data:
+            try:
+                validated_item = validator.validate_data(item)
+                validated_data.append(validated_item)
+            except Exception as e:
+                logger.warning(f"Skipping invalid data: {str(e)}")
+                continue
+        
+        logger.info(f"Collected and validated data for {len(validated_data)} companies")
         
         logger.info("Transforming data...")
-        transformed_data = etl.transform_data(raw_data)
+        transformed_data = etl.transform_data(validated_data)
         
         logger.info("Loading data to database...")
         etl.load_data(transformed_data)
